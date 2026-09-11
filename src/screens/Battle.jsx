@@ -11,7 +11,7 @@ import {
 import { generateProblem } from "../engine/problemGenerators.js";
 import { getStatsAtLevel } from "../data/growthCurve.js";
 import { levelFromExp } from "../engine/expCurve.js";
-import BattleFX from "../fx/BattleFX.jsx";
+import BattleFX, { PROJECTILE_MS } from "../fx/BattleFX.jsx";
 
 const REWARD_EXP_GROUP = 12;
 const REWARD_EXP_BOSS = 40;
@@ -75,29 +75,19 @@ export default function Battle({ nav, params }) {
     setPhase("question");
   }
 
-  function pickChoice(index) {
-    const character = charactersById[selectedCharId];
-    const level = levelFromExp(save.owned[selectedCharId]?.exp || 0, character.rarity);
-    const correct = index === problem.correctIndex;
-    const attack = resolvePlayerAttack(character, level, subject, correct, useSkill);
+  // たま(投射エフェクト)が着弾した瞬間に呼ぶ。HPバー・ログ・シェイクは
+  // ここでまとめて動かす＝見た目の着弾とゲーム状態の更新を同期させる。
+  function applyImpact({ damage, isCrit, missed, actorName }) {
+    const message = missed
+      ? `${actorName} の攻撃は届かなかった…（不正解）`
+      : isCrit
+      ? `会心の一撃！ ${actorName} の攻撃、${damage}ダメージ！`
+      : `${actorName} の攻撃、${damage}ダメージ。`;
 
-    let message;
-    if (!correct) {
-      message = `${character.name} の攻撃は届かなかった…（不正解）`;
-      fxRef.current?.playMiss();
-    } else if (attack.isCrit) {
-      message = `会心の一撃！ ${character.name} の攻撃、${attack.damage}ダメージ！`;
-      fxRef.current?.playHit({ damage: attack.damage, isCrit: true });
-      triggerShake(400);
-    } else {
-      message = `${character.name} の攻撃、${attack.damage}ダメージ。`;
-      fxRef.current?.playHit({ damage: attack.damage, isCrit: false });
-      triggerShake(180);
-    }
+    if (!missed) triggerShake(isCrit ? 400 : 180);
 
-    const newEnemyHp = Math.max(0, enemyHp - attack.damage);
+    const newEnemyHp = Math.max(0, enemyHp - damage);
     setEnemyHp(newEnemyHp);
-    if (useSkill) setSkillUsed((s) => ({ ...s, [selectedCharId]: true }));
 
     if (newEnemyHp <= 0) {
       const isBoss = encounterIndex === encounters.length - 1;
@@ -116,11 +106,42 @@ export default function Battle({ nav, params }) {
     const newPartyHp = Math.max(0, partyHp - dmg);
     setPartyHp(newPartyHp);
     setLog(`${message}\n${enemy.name} の反撃、${dmg}ダメージ！`);
-    setPhase("result");
+    setPhase(newPartyHp <= 0 ? "defeat" : "result");
+  }
 
-    if (newPartyHp <= 0) {
-      setPhase("defeat");
+  function pickChoice(index) {
+    const character = charactersById[selectedCharId];
+    const level = levelFromExp(save.owned[selectedCharId]?.exp || 0, character.rarity);
+    const correct = index === problem.correctIndex;
+    const attack = resolvePlayerAttack(character, level, subject, correct, useSkill);
+    if (useSkill) setSkillUsed((s) => ({ ...s, [selectedCharId]: true }));
+
+    // 「たま」が敵まで飛んでいく間は選択肢を隠す(resolving)。
+    // 着弾の演出(playHit/playMiss)と、ダメージ反映(applyImpact)の
+    // タイミングをPROJECTILE_MSで揃える。
+    setPhase("resolving");
+
+    if (!correct) {
+      fxRef.current?.playMiss({ subject });
+      setTimeout(
+        () => applyImpact({ damage: 0, isCrit: false, missed: true, actorName: character.name }),
+        PROJECTILE_MS.miss
+      );
+      return;
     }
+
+    fxRef.current?.playHit({ damage: attack.damage, isCrit: attack.isCrit, subject });
+    const delay = attack.isCrit ? PROJECTILE_MS.crit : PROJECTILE_MS.normal;
+    setTimeout(
+      () =>
+        applyImpact({
+          damage: attack.damage,
+          isCrit: attack.isCrit,
+          missed: false,
+          actorName: character.name,
+        }),
+      delay
+    );
   }
 
   function nextStep() {
@@ -247,6 +268,12 @@ export default function Battle({ nav, params }) {
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {phase === "resolving" && (
+        <div className="mw-panel mw-center" style={{ minHeight: 60 }}>
+          <div className="mw-sub">たまが飛んでいく…</div>
         </div>
       )}
 
