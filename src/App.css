@@ -1,0 +1,268 @@
+/* ============================================================
+   App.css — 最低限の見た目。デザインは後で仕上げる前提なので、
+   ここではレイアウトが破綻しない・タップ対象が大きい、を優先した。
+   ============================================================ */
+
+:root {
+  --bg: #14172b;
+  --panel: #1f2444;
+  --panel-2: #2a3060;
+  --accent: #ffcf4d;
+  --text: #f4f4fb;
+  --text-dim: #a7abcf;
+  --hp: #ff5b6a;
+  --calc: #4488ff;
+  --eq: #a259ff;
+  --func: #22c1a1;
+  --geo: #ff8a4d;
+  --data: #ff5bb0;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+}
+
+.mw-app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+}
+
+.mw-screen {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mw-center {
+  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 20px;
+}
+
+.mw-title {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.mw-sub {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.mw-panel {
+  background: var(--panel);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.mw-btn {
+  display: block;
+  width: 100%;
+  padding: 16px;
+  border-radius: 14px;
+  border: none;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: left;
+}
+
+.mw-btn:active {
+  transform: scale(0.98);
+}
+
+.mw-btn.primary {
+  background: var(--accent);
+  color: #24230a;
+  text-align: center;
+  font-size: 1.1rem;
+}
+
+.mw-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.mw-btn.small {
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  width: auto;
+}
+
+.mw-row {
+  display: flex;
+  gap: 10px;
+}
+
+.mw-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.mw-stage {
+  aspect-ratio: 1;
+  border-radius: 18px;
+  border: 3px solid transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: 700;
+  cursor: pointer;
+  color: white;
+  text-align: center;
+  padding: 8px;
+}
+
+.mw-stage.locked {
+  filter: grayscale(1);
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mw-stage.cleared {
+  border-color: var(--accent);
+}
+
+.mw-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.mw-hpbar {
+  height: 14px;
+  border-radius: 8px;
+  background: #3a3f6b;
+  overflow: hidden;
+}
+
+.mw-hpbar > div {
+  height: 100%;
+  background: var(--hp);
+  transition: width 0.25s ease;
+}
+
+.mw-enemy {
+  text-align: center;
+  padding: 18px 0;
+}
+
+.mw-enemy-emoji {
+  font-size: 3.4rem;
+}
+
+.mw-question {
+  font-size: 1.15rem;
+  font-weight: 700;
+  text-align: center;
+  padding: 8px 0;
+}
+
+.mw-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.mw-choice {
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--panel-2);
+  border: none;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mw-choice.correct {
+  background: #2fae5c;
+}
+
+.mw-choice.wrong {
+  background: #c94848;
+}
+
+.mw-log {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  min-height: 1.4em;
+  text-align: center;
+}
+
+.mw-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+
+.mw-bar-label {
+  width: 3.2em;
+  color: var(--text-dim);
+}
+
+.mw-bar-track {
+  flex: 1;
+  height: 10px;
+  background: #3a3f6b;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mw-bar-fill {
+  height: 100%;
+}
+
+.mw-party-slot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+
+.mw-rarity {
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 8px;
+  color: #24230a;
+}
+
+.mw-rarity-N { background: #b9bdd8; }
+.mw-rarity-R { background: #7fd0ff; }
+.mw-rarity-SR { background: #ffd166; }
+.mw-rarity-UR { background: #ff9ecb; }
