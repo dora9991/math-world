@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { getChapter, getGrade, CHAPTER_SUBJECT, SUBJECT_LABEL } from "../data/storyMap.js";
 import { useGame } from "../context/GameContext.jsx";
 import {
@@ -11,6 +11,7 @@ import {
 import { generateProblem } from "../engine/problemGenerators.js";
 import { getStatsAtLevel } from "../data/growthCurve.js";
 import { levelFromExp } from "../engine/expCurve.js";
+import BattleFX from "../fx/BattleFX.jsx";
 
 const REWARD_EXP_GROUP = 12;
 const REWARD_EXP_BOSS = 40;
@@ -53,6 +54,13 @@ export default function Battle({ nav, params }) {
   const [problem, setProblem] = useState(null);
   const [log, setLog] = useState("");
   const [totals, setTotals] = useState({ exp: 0, coins: 0 });
+  const fxRef = useRef(null);
+  const [shake, setShake] = useState(false);
+
+  function triggerShake(ms) {
+    setShake(true);
+    setTimeout(() => setShake(false), ms);
+  }
 
   const enemy = encounters[encounterIndex];
   const isBossTurn = encounterIndex === encounters.length - 1;
@@ -76,10 +84,15 @@ export default function Battle({ nav, params }) {
     let message;
     if (!correct) {
       message = `${character.name} の攻撃は届かなかった…（不正解）`;
+      fxRef.current?.playMiss();
     } else if (attack.isCrit) {
       message = `会心の一撃！ ${character.name} の攻撃、${attack.damage}ダメージ！`;
+      fxRef.current?.playHit({ damage: attack.damage, isCrit: true });
+      triggerShake(400);
     } else {
       message = `${character.name} の攻撃、${attack.damage}ダメージ。`;
+      fxRef.current?.playHit({ damage: attack.damage, isCrit: false });
+      triggerShake(180);
     }
 
     const newEnemyHp = Math.max(0, enemyHp - attack.damage);
@@ -93,6 +106,8 @@ export default function Battle({ nav, params }) {
       setTotals((t) => ({ exp: t.exp + gainedExp, coins: t.coins + gainedCoins }));
       setLog(`${message}\n${enemy.name} をたおした！`);
       setPhase("result");
+      fxRef.current?.playDefeat();
+      triggerShake(500);
       return;
     }
 
@@ -162,7 +177,8 @@ export default function Battle({ nav, params }) {
         <span>{SUBJECT_LABEL[subject] || ""}のバトル</span>
       </div>
 
-      <div className="mw-panel mw-enemy">
+      <div className={`mw-panel mw-enemy ${shake ? "mw-shake" : ""}`}>
+        <BattleFX ref={fxRef} />
         <div className="mw-enemy-emoji">{isBossTurn ? "👹" : "👾"}</div>
         <div style={{ fontWeight: 700 }}>{enemy.name}</div>
         <div className="mw-hpbar" style={{ margin: "8px 0" }}>
