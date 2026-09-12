@@ -11,7 +11,7 @@ import {
 import { generateProblem } from "../engine/problemGenerators.js";
 import { levelFromExp } from "../engine/expCurve.js";
 import BattleFX, { PROJECTILE_MS } from "../fx/BattleFX.jsx";
-import { playCorrectSound, playIncorrectSound } from "../fx/sound.js";
+import { playCorrectSound, playIncorrectSound, playEnemyAttackStartSound } from "../fx/sound.js";
 import MonsterPortrait from "../components/MonsterPortrait.jsx";
 
 const REWARD_EXP_GROUP = 12;
@@ -30,6 +30,9 @@ const OFFSET_SPREAD = 30;
 const COUNTER_LEAD_MS = 280;
 // 敵の反撃演出(引っ掻き)がどれくらいの時間表示されるか。
 const COUNTER_FX_MS = 600;
+// 「敵の攻撃開始音」(発動効果音)が鳴ってから、実際に引っ掻き(ダメージ)が
+// 来るまでの予備動作の間。プレイヤー側の発射→着弾と同じ「音→間→衝撃」の型。
+const ENEMY_WINDUP_MS = 220;
 
 function buildEncounters(params, chapter, gradeData) {
   const { kind, subUnitId } = params;
@@ -142,13 +145,19 @@ export default function Battle({ nav, params }) {
       return;
     }
 
-    // 敵が生きている → 少し間を置いて反撃シーケンス（下がる→引っ掻く→揺れる）
+    // 敵が生きている → 少し間を置いて反撃シーケンス
+    // 「攻撃開始音(発動効果音)→予備動作→下がる/引っ掻く(＝ダメージを受けた音)→揺れる」
     setTimeout(() => {
       setEnemyLunge(true);
-      const partyRect = rectOf(partyAreaRef.current, stageRef.current);
-      fxRef.current?.playEnemyCounter({ rect: partyRect });
-      triggerPartyShake(420);
-      setTimeout(() => setEnemyLunge(false), 320);
+      playEnemyAttackStartSound(); // kazu制作の実音声（発動効果音）＝敵の攻撃開始の合図
+
+      setTimeout(() => {
+        const partyRect = rectOf(partyAreaRef.current, stageRef.current);
+        fxRef.current?.playEnemyCounter({ rect: partyRect }); // 引っ掻き視覚＋被弾音
+        triggerPartyShake(420);
+      }, ENEMY_WINDUP_MS);
+
+      setTimeout(() => setEnemyLunge(false), ENEMY_WINDUP_MS + 320);
 
       setTimeout(() => {
         const dmg = resolveEnemyAttack(enemy);
@@ -156,7 +165,7 @@ export default function Battle({ nav, params }) {
         setPartyHp(newPartyHp);
         setLog(`${headline}\n${enemy.name} の反撃、${dmg}ダメージ！`);
         setPhase(newPartyHp <= 0 ? "defeat" : "result");
-      }, COUNTER_FX_MS);
+      }, ENEMY_WINDUP_MS + COUNTER_FX_MS);
     }, COUNTER_LEAD_MS);
   }
 

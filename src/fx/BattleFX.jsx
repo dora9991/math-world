@@ -26,6 +26,7 @@ import {
   playMissSound,
   playDefeatSound,
   playEnemyHitSound,
+  playPlayerAttackStartSound,
 } from "./sound.js";
 
 // 系統ごとの色（App.cssの --calc/--eq/--func/--geo/--data と同じ値）
@@ -423,7 +424,7 @@ const BattleFX = forwardRef(function BattleFX(_props, ref) {
       const app = appRef.current;
       if (!app) return;
       const color = SUBJECT_COLOR[subject] ?? 0xffffff;
-      playLaunchSound({ crit: isCrit });
+      playPlayerAttackStartSound(); // kazu制作の実音声（発動２）。3体同時攻撃なので1ターンに3回鳴る
       spawnProjectile(app, {
         color,
         size: isCrit ? 18 : 14,
