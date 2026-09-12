@@ -9,15 +9,23 @@ import {
   spawnBoss,
 } from "../engine/battleEngine.js";
 import { generateProblem } from "../engine/problemGenerators.js";
-import { getStatsAtLevel } from "../data/growthCurve.js";
 import { levelFromExp } from "../engine/expCurve.js";
 import BattleFX, { PROJECTILE_MS } from "../fx/BattleFX.jsx";
+import { playCorrectSound, playIncorrectSound } from "../fx/sound.js";
 import MonsterPortrait from "../components/MonsterPortrait.jsx";
 
 const REWARD_EXP_GROUP = 12;
 const REWARD_EXP_BOSS = 40;
 const REWARD_COIN_GROUP = 8;
 const REWARD_COIN_BOSS = 30;
+
+// 正解/不正解の音を聞かせてから、少し間を置いてエフェクト(たま)を出す。
+const ANSWER_SOUND_LEAD_MS = 200;
+// 3体同時攻撃のときの、たま発射タイミングのずらし幅（「若干ランダムでずらす」）。
+const STAGGER_MS = 110;
+const STAGGER_JITTER_MS = 90;
+// 3体分のダメージ表記/バーストが重なりすぎないようにする表示位置のずらし幅。
+const OFFSET_SPREAD = 30;
 
 function buildEncounters(params, chapter, gradeData) {
   const { kind, subUnitId } = params;
@@ -48,9 +56,9 @@ export default function Battle({ nav, params }) {
   const [encounterIndex, setEncounterIndex] = useState(0);
   const [enemyHp, setEnemyHp] = useState(encounters[0]?.hp ?? 0);
   const [partyHp, setPartyHp] = useState(PARTY_MAX_HP);
-  const [phase, setPhase] = useState("choose"); // choose | question | result | victory | defeat
-  const [selectedCharId, setSelectedCharId] = useState(save.party[0] || null);
-  const [useSkill, setUseSkill] = useState(false);
+  const [phase, setPhase] = useState("choose"); // choose | question | resolving | result | defeat
+  // スキルは「発動予約」をキャラごとにトグル。同じキャラは1バトルで1回だけ(skillUsedで管理)。
+  const [skillToggle, setSkillToggle] = useState({});
   const [skillUsed, setSkillUsed] = useState({});
   const [problem, setProblem] = useState(null);
   const [log, setLog] = useState("");
@@ -67,82 +75,109 @@ export default function Battle({ nav, params }) {
   const isBossTurn = encounterIndex === encounters.length - 1;
   const partyMembers = save.party.filter(Boolean).map((id) => charactersById[id]);
 
-  const subject = chapterId
-    ? CHAPTER_SUBJECT[chapterId]
-    : charactersById[selectedCharId]?.primarySubject;
+  // 章のステージなら章の系統に固定。大ボス戦(章なし)は、キャラ自身の得意系統で殴る。
+  function subjectFor(character) {
+    return chapterId ? CHAPTER_SUBJECT[chapterId] : character?.primarySubject;
+  }
+  const topSubjectLabel = chapterId ? SUBJECT_LABEL[CHAPTER_SUBJECT[chapterId]] : "総力戦";
 
   function startQuestion() {
     setProblem(generateProblem(chapterId || "c1"));
     setPhase("question");
   }
 
-  // たま(投射エフェクト)が着弾した瞬間に呼ぶ。HPバー・ログ・シェイクは
-  // ここでまとめて動かす＝見た目の着弾とゲーム状態の更新を同期させる。
-  function applyImpact({ damage, isCrit, missed, actorName }) {
-    const message = missed
-      ? `${actorName} の攻撃は届かなかった…（不正解）`
-      : isCrit
-      ? `会心の一撃！ ${actorName} の攻撃、${damage}ダメージ！`
-      : `${actorName} の攻撃、${damage}ダメージ。`;
+  // 3体分の攻撃(またはミス)が出そろった後にまとめて呼ぶ。HPバー・ログ・シェイクは
+  // ここで一括更新＝見た目の着弾とゲーム状態の更新を同期させる。
+  function applyPartyImpact({ missed, hits }) {
+    const totalDamage = missed ? 0 : hits.reduce((s, h) => s + h.attack.damage, 0);
+    const anyCrit = !missed && hits.some((h) => h.attack.isCrit);
+    if (!missed) triggerShake(anyCrit ? 450 : 220);
 
-    if (!missed) triggerShake(isCrit ? 400 : 180);
+    const headline = missed
+      ? "パーティの攻撃は届かなかった…（不正解）"
+      : `${hits
+          .map((h) => `${h.character.name}:${h.attack.damage}${h.attack.isCrit ? "(会心!)" : ""}`)
+          .join(" / ")}\n合計${totalDamage}ダメージ！`;
 
-    const newEnemyHp = Math.max(0, enemyHp - damage);
+    const newEnemyHp = Math.max(0, enemyHp - totalDamage);
     setEnemyHp(newEnemyHp);
 
-    if (newEnemyHp <= 0) {
+    if (!missed && newEnemyHp <= 0) {
       const isBoss = encounterIndex === encounters.length - 1;
       const gainedExp = isBoss ? REWARD_EXP_BOSS : REWARD_EXP_GROUP;
       const gainedCoins = isBoss ? REWARD_COIN_BOSS : REWARD_COIN_GROUP;
       setTotals((t) => ({ exp: t.exp + gainedExp, coins: t.coins + gainedCoins }));
-      setLog(`${message}\n${enemy.name} をたおした！`);
+      setLog(`${headline}\n${enemy.name} をたおした！`);
       setPhase("result");
       fxRef.current?.playDefeat();
       triggerShake(500);
       return;
     }
 
-    // 敵の反撃
     const dmg = resolveEnemyAttack(enemy);
     const newPartyHp = Math.max(0, partyHp - dmg);
     setPartyHp(newPartyHp);
-    setLog(`${message}\n${enemy.name} の反撃、${dmg}ダメージ！`);
+    setLog(`${headline}\n${enemy.name} の反撃、${dmg}ダメージ！`);
     setPhase(newPartyHp <= 0 ? "defeat" : "result");
   }
 
   function pickChoice(index) {
-    const character = charactersById[selectedCharId];
-    const level = levelFromExp(save.owned[selectedCharId]?.exp || 0, character.rarity);
     const correct = index === problem.correctIndex;
-    const attack = resolvePlayerAttack(character, level, subject, correct, useSkill);
-    if (useSkill) setSkillUsed((s) => ({ ...s, [selectedCharId]: true }));
-
-    // 「たま」が敵まで飛んでいく間は選択肢を隠す(resolving)。
-    // 着弾の演出(playHit/playMiss)と、ダメージ反映(applyImpact)の
-    // タイミングをPROJECTILE_MSで揃える。
     setPhase("resolving");
 
-    if (!correct) {
-      fxRef.current?.playMiss({ subject });
-      setTimeout(
-        () => applyImpact({ damage: 0, isCrit: false, missed: true, actorName: character.name }),
-        PROJECTILE_MS.miss
-      );
-      return;
-    }
+    // 先に正解/不正解の音を聞かせ、その後にエフェクト(たま)を出す。
+    if (correct) playCorrectSound();
+    else playIncorrectSound();
 
-    fxRef.current?.playHit({ damage: attack.damage, isCrit: attack.isCrit, subject });
-    const delay = attack.isCrit ? PROJECTILE_MS.crit : PROJECTILE_MS.normal;
-    setTimeout(
-      () =>
-        applyImpact({
-          damage: attack.damage,
-          isCrit: attack.isCrit,
-          missed: false,
-          actorName: character.name,
-        }),
-      delay
-    );
+    setTimeout(() => {
+      if (!correct) {
+        fxRef.current?.playMiss({ subject: subjectFor(partyMembers[0]) });
+        setTimeout(
+          () => applyPartyImpact({ missed: true, hits: [] }),
+          PROJECTILE_MS.miss
+        );
+        return;
+      }
+
+      // 正解＝3体同時にこうげき。誰かを選ぶのではなく全員が殴る。
+      const hits = partyMembers.map((c) => {
+        const level = levelFromExp(save.owned[c.id]?.exp || 0, c.rarity);
+        const charSubject = subjectFor(c);
+        const useSkillNow = !!skillToggle[c.id] && !skillUsed[c.id];
+        const attack = resolvePlayerAttack(c, level, charSubject, true, useSkillNow);
+        return { character: c, attack, subject: charSubject, useSkill: useSkillNow };
+      });
+
+      let maxLanding = 0;
+      hits.forEach((h, i) => {
+        const stagger = i * STAGGER_MS + Math.random() * STAGGER_JITTER_MS;
+        const travel = h.attack.isCrit ? PROJECTILE_MS.crit : PROJECTILE_MS.normal;
+        maxLanding = Math.max(maxLanding, stagger + travel);
+        const offset = {
+          dx: (i - 1) * OFFSET_SPREAD + (Math.random() * 12 - 6),
+          dy: Math.random() * 14 - 7,
+        };
+        setTimeout(() => {
+          fxRef.current?.playHit({
+            damage: h.attack.damage,
+            isCrit: h.attack.isCrit,
+            subject: h.subject,
+            offset,
+          });
+        }, stagger);
+      });
+
+      const usedIds = hits.filter((h) => h.useSkill).map((h) => h.character.id);
+      if (usedIds.length) {
+        setSkillUsed((s) => {
+          const next = { ...s };
+          for (const id of usedIds) next[id] = true;
+          return next;
+        });
+      }
+
+      setTimeout(() => applyPartyImpact({ missed: false, hits }), maxLanding);
+    }, ANSWER_SOUND_LEAD_MS);
   }
 
   function nextStep() {
@@ -157,12 +192,12 @@ export default function Battle({ nav, params }) {
       setEncounterIndex(nextIndex);
       setEnemyHp(encounters[nextIndex].hp);
       setPhase("choose");
-      setUseSkill(false);
+      setSkillToggle({});
       setLog("");
       return;
     }
     setPhase("choose");
-    setUseSkill(false);
+    setSkillToggle({});
     setLog("");
   }
 
@@ -196,7 +231,7 @@ export default function Battle({ nav, params }) {
         <span>
           {encounterIndex + 1} / {encounters.length}戦目
         </span>
-        <span>{SUBJECT_LABEL[subject] || ""}のバトル</span>
+        <span>{topSubjectLabel}のバトル</span>
       </div>
 
       <div className={`mw-panel mw-enemy ${shake ? "mw-shake" : ""}`}>
@@ -215,24 +250,42 @@ export default function Battle({ nav, params }) {
 
       <div className="mw-panel">
         <div className="mw-sub" style={{ marginBottom: 8 }}>
-          パーティ（HPは3体合算）
+          パーティ（HPは3体合算・スキルはポートレートをタップで発動予約）
         </div>
         <div className="mw-party-row" style={{ marginBottom: 10 }}>
-          {partyMembers.map((c) => (
-            <button
-              key={c.id}
-              className="mw-portrait-btn"
-              disabled={phase !== "choose"}
-              onClick={() => setSelectedCharId(c.id)}
-            >
-              <MonsterPortrait
-                character={c}
-                size="small"
-                selected={selectedCharId === c.id}
-                footer={c.name}
-              />
-            </button>
-          ))}
+          {partyMembers.map((c) => {
+            const hasSkill = !!c.skill;
+            const used = !!skillUsed[c.id];
+            const toggled = !!skillToggle[c.id];
+            return (
+              <button
+                key={c.id}
+                className="mw-portrait-btn"
+                disabled={phase !== "choose" || !hasSkill || used}
+                onClick={() => setSkillToggle((s) => ({ ...s, [c.id]: !s[c.id] }))}
+              >
+                <MonsterPortrait
+                  character={c}
+                  size="small"
+                  selected={toggled}
+                  footer={
+                    <>
+                      {c.name}
+                      {hasSkill && (
+                        <div style={{ color: toggled ? "var(--accent)" : "var(--text-dim)" }}>
+                          {used
+                            ? "スキル使用済"
+                            : toggled
+                            ? `${c.skill.icon}発動予約`
+                            : `${c.skill.icon}タップで発動`}
+                        </div>
+                      )}
+                    </>
+                  }
+                />
+              </button>
+            );
+          })}
         </div>
         <div className="mw-hpbar">
           <div style={{ width: `${Math.max(0, (partyHp / PARTY_MAX_HP) * 100)}%` }} />
@@ -245,22 +298,9 @@ export default function Battle({ nav, params }) {
       {phase === "choose" && (
         <div className="mw-panel">
           <div className="mw-sub" style={{ marginBottom: 8 }}>
-            {charactersById[selectedCharId]?.name} でこうげきする
+            3体同時にこうげきする
           </div>
-          {charactersById[selectedCharId]?.skill && (
-            <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
-              <input
-                type="checkbox"
-                checked={useSkill}
-                disabled={!!skillUsed[selectedCharId]}
-                onChange={(e) => setUseSkill(e.target.checked)}
-              />
-              {charactersById[selectedCharId].skill.icon} {charactersById[selectedCharId].skill.name}
-              を使う（1回きり・威力1.5倍）
-              {skillUsed[selectedCharId] && "（使用済）"}
-            </label>
-          )}
-          <button className="mw-btn primary" style={{ marginTop: 12 }} onClick={startQuestion}>
+          <button className="mw-btn primary" onClick={startQuestion}>
             こうげき！
           </button>
         </div>
