@@ -85,9 +85,10 @@ export default function Battle({ nav, params }) {
   const [enemies, setEnemies] = useState(() => (encounters[0] || []).map((e) => ({ ...e })));
   const [partyHp, setPartyHp] = useState(PARTY_MAX_HP);
   const [phase, setPhase] = useState("choose"); // choose | question | resolving | result | defeat
-  // スキルは「発動予約」をキャラごとにトグル。同じキャラは1バトルで1回だけ(skillUsedで管理)。
+  // スキルは10目盛のゲージが満タン(10)になったら発動できる。攻撃を当てるたびに+1、
+  // 使うと0に戻る（8/11設計「累積正解でゲージが溜まる」のtoy実装）。
   const [skillToggle, setSkillToggle] = useState({});
-  const [skillUsed, setSkillUsed] = useState({});
+  const [gauge, setGauge] = useState({});
   // 各キャラが「どの敵を狙うか」。ドラッグで上書きするまでは自動割り振り。
   const [targets, setTargets] = useState({});
   const [problem, setProblem] = useState(null);
@@ -150,24 +151,30 @@ export default function Battle({ nav, params }) {
     setPhase("question");
   }
 
-  // ドラッグ開始（パーティのポートレートから）。動かなければタップ＝スキルの発動予約トグル、
-  // 一定以上動かして敵の上で離せば＝その敵を攻撃対象に指定。
+  // ドラッグ開始（パーティのポートレートから）。指定キャラを押した瞬間からアイコンが
+  // 付いてくる。動かさずに離せばタップ＝スキルの発動予約トグル、一定以上動かして
+  // 敵の上で離せば＝その敵を攻撃対象に指定。
   function handlePortraitPointerDown(e, characterId) {
     if (phase !== "choose") return;
+    e.preventDefault(); // ブラウザ標準の画像ドラッグ等に奪われないようにする
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* 対応していない環境では無視 */
+    }
     const startX = e.clientX;
     const startY = e.clientY;
     dragRef.current = { charId: characterId, startX, startY, moved: false };
     hoverRef.current = null;
+    setDragGhost({ charId: characterId, x: startX, y: startY }); // 押した瞬間からアイコンを出す
 
     function onMove(ev) {
       const d = dragRef.current;
       if (!d) return;
       const dx = ev.clientX - d.startX;
       const dy = ev.clientY - d.startY;
-      if (Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
-        d.moved = true;
-        setDragGhost({ charId: d.charId, x: ev.clientX, y: ev.clientY });
-      }
+      if (Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) d.moved = true;
+      setDragGhost({ charId: d.charId, x: ev.clientX, y: ev.clientY });
       if (!d.moved) return;
 
       let hovered = null;
@@ -200,7 +207,7 @@ export default function Battle({ nav, params }) {
         }
       } else {
         const c = charactersById[d.charId];
-        if (c?.skill && !skillUsed[d.charId]) {
+        if (c?.skill && (gauge[d.charId] || 0) >= 10) {
           setSkillToggle((s) => ({ ...s, [d.charId]: !s[d.charId] }));
         }
       }
@@ -323,7 +330,7 @@ export default function Battle({ nav, params }) {
       const hits = partyMembers.map((c, i) => {
         const level = levelFromExp(save.owned[c.id]?.exp || 0, c.rarity);
         const charSubject = subjectFor(c);
-        const useSkillNow = !!skillToggle[c.id] && !skillUsed[c.id];
+        const useSkillNow = !!skillToggle[c.id] && (gauge[c.id] || 0) >= 10;
         const attack = resolvePlayerAttack(c, level, charSubject, true, useSkillNow);
         const from = pointOf(portraitRefs.current[c.id], stageEl);
         const targetId = resolveTarget(c.id, i);
@@ -359,14 +366,14 @@ export default function Battle({ nav, params }) {
         }, stagger + POPUP_LEAD_MS);
       });
 
-      const usedIds = hits.filter((h) => h.useSkill).map((h) => h.character.id);
-      if (usedIds.length) {
-        setSkillUsed((s) => {
-          const next = { ...s };
-          for (const id of usedIds) next[id] = true;
-          return next;
-        });
-      }
+      // ゲージ更新：攻撃を当てたキャラは+1(上限10)、スキルを使ったキャラは0に戻る。
+      setGauge((g) => {
+        const next = { ...g };
+        for (const h of hits) {
+          next[h.character.id] = h.useSkill ? 0 : Math.min(10, (g[h.character.id] || 0) + 1);
+        }
+        return next;
+      });
 
       setTimeout(() => resolveAfterPartyAttack({ missed: false, hits }), maxLanding);
     }, ANSWER_SOUND_LEAD_MS);
@@ -437,11 +444,6 @@ export default function Battle({ nav, params }) {
         <BattleFX ref={fxRef} />
 
         <div className="mw-enemy-area">
-          {enemies.length > 1 && (
-            <div className="mw-sub" style={{ marginBottom: 6 }}>
-              仲間のポートレートを敵にドラッグすると、攻撃対象を指定できます
-            </div>
-          )}
           <div className="mw-enemy-row">
             {enemies.map((en) => {
               const defeated = en.hp <= 0;
@@ -472,13 +474,11 @@ export default function Battle({ nav, params }) {
         </div>
 
         <div className={`mw-party-area ${partyShake ? "mw-shake" : ""}`} ref={partyAreaRef}>
-          <div className="mw-sub" style={{ marginBottom: 8 }}>
-            パーティ（HPは3体合算・タップでスキル発動予約・ドラッグで攻撃対象を指定）
-          </div>
           <div className="mw-party-row mw-party-row-small" style={{ marginBottom: 10 }}>
             {partyMembers.map((c, i) => {
               const hasSkill = !!c.skill;
-              const used = !!skillUsed[c.id];
+              const g = gauge[c.id] || 0;
+              const ready = hasSkill && g >= 10;
               const toggled = !!skillToggle[c.id];
               const popped = !!poppedOut[c.id];
               const targetId = resolveTarget(c.id, i);
@@ -497,25 +497,25 @@ export default function Battle({ nav, params }) {
                     character={c}
                     size="small"
                     selected={toggled}
+                    ready={ready}
                     footer={
                       <>
                         {c.name}
-                        {enemies.length > 1 && targetIndex >= 0 && (
-                          <div style={{ color: "var(--text-dim)" }}>→敵{targetIndex + 1}</div>
-                        )}
+                        {enemies.length > 1 && targetIndex >= 0 ? `→敵${targetIndex + 1}` : ""}
+                        <div className="mw-gauge-row">
+                          {Array.from({ length: 10 }, (_, t) => (
+                            <div key={t} className={`mw-gauge-tick ${t < g ? "filled" : ""}`} />
+                          ))}
+                        </div>
                         {hasSkill && (
-                          <div style={{ color: toggled ? "var(--accent)" : "var(--text-dim)" }}>
-                            {used
-                              ? "スキル使用済"
-                              : toggled
-                              ? `${c.skill.icon}発動予約`
-                              : `${c.skill.icon}タップで発動`}
-                          </div>
+                          <span className={`mw-skill-icon ${ready ? "mw-skill-ready" : ""}`}>
+                            {c.skill.icon}
+                          </span>
                         )}
                       </>
                     }
                   />
-                  {/* 攻撃の瞬間、枠から全体のイラストが2倍の大きさで飛び出す */}
+                  {/* 攻撃の瞬間、枠から全体のイラストが縦横2倍の大きさで飛び出す */}
                   {monsterImageUrl(c, "full") && (
                     <div className={`mw-portrait-popup ${popped ? "mw-popup-show" : ""}`}>
                       <img
@@ -549,9 +549,6 @@ export default function Battle({ nav, params }) {
 
       {phase === "choose" && (
         <div className="mw-panel">
-          <div className="mw-sub" style={{ marginBottom: 8 }}>
-            3体同時にこうげきする
-          </div>
           <button className="mw-btn primary" onClick={startQuestion}>
             こうげき！
           </button>
@@ -573,7 +570,7 @@ export default function Battle({ nav, params }) {
 
       {phase === "resolving" && (
         <div className="mw-panel mw-center" style={{ minHeight: 60 }}>
-          <div className="mw-sub">たまが飛んでいく…</div>
+          <div className="mw-sub">…</div>
         </div>
       )}
 

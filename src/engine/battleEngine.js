@@ -60,9 +60,23 @@ export function resolveEnemyAttack(enemy) {
   return Math.max(1, Math.round(base * variance));
 }
 
+// 「初回の敵から強すぎる」フィードバックへの対応（2026-09-12）。gachaRoster.jsの
+// 数値はレベルMAX(上限)到達時を基準に置いていたため、レベル1の初期パーティには
+// 章の後半のつもりの強さで襲いかかってきてしまっていた。章が進むほど「本来の
+// 強さ」に近づくよう、早い章の敵だけ大きく弱くする（＝最初はちゃんと倒せる）。
+function earlyGameScale(baseEnemy) {
+  const chapterNum = baseEnemy.chapterId ? parseInt(baseEnemy.chapterId.replace("c", ""), 10) : null;
+  if (!chapterNum) return 1; // 大ボス等、章に属さないものはそのまま
+  if (chapterNum <= 1) return 0.4;
+  if (chapterNum === 2) return 0.6;
+  if (chapterNum === 3) return 0.75;
+  if (chapterNum === 4) return 0.9;
+  return 1;
+}
+
 /** グループ内の敵インスタンスを作る（1〜3組の雑魚は同一キャラを使い回す）。 */
 export function spawnEnemyGroup(baseEnemy, groupIndex) {
-  const scale = 1 + groupIndex * 0.08; // 後の組ほど少しだけ硬くする
+  const scale = (1 + groupIndex * 0.08) * earlyGameScale(baseEnemy); // 後の組ほど少しだけ硬くする
   return {
     ...baseEnemy,
     instanceId: `${baseEnemy.id}_g${groupIndex}`,
@@ -73,10 +87,12 @@ export function spawnEnemyGroup(baseEnemy, groupIndex) {
 }
 
 export function spawnBoss(bossEntry) {
+  const scale = earlyGameScale(bossEntry);
   return {
     ...bossEntry,
     instanceId: `${bossEntry.id}_boss`,
-    hp: bossEntry.hp,
-    maxHp: bossEntry.hp,
+    hp: Math.round(bossEntry.hp * scale),
+    maxHp: Math.round(bossEntry.hp * scale),
+    atk: Math.round(bossEntry.atk * scale),
   };
 }

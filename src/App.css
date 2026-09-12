@@ -338,6 +338,9 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none; /* imgが自前のドラッグを奪わないよう、親ボタンにイベントを渡す */
 }
 
 .mw-portrait-fallback {
@@ -351,8 +354,41 @@ body {
 .mw-portrait-UR { border-color: #ff9ecb; }
 
 .mw-portrait-selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent);
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
+/* スキルゲージが満タン(10/10)になった合図。枠が黄色に光る。 */
+.mw-portrait-ready {
+  border-color: #ffe066;
+  box-shadow: 0 0 10px 3px rgba(255, 224, 102, 0.85);
+}
+
+.mw-gauge-row {
+  display: flex;
+  gap: 1.5px;
+  width: 100%;
+  margin-top: 3px;
+}
+
+.mw-gauge-tick {
+  flex: 1;
+  height: 4px;
+  border-radius: 1px;
+  background: #3a3f6b;
+}
+
+.mw-gauge-tick.filled {
+  background: #ffe066;
+}
+
+.mw-skill-icon {
+  font-size: 0.85rem;
+  opacity: 0.4;
+}
+
+.mw-skill-icon.mw-skill-ready {
+  opacity: 1;
 }
 
 .mw-portrait-col {
@@ -432,6 +468,8 @@ body {
   aspect-ratio: 1;
   object-fit: contain;
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.5));
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
 .mw-portrait-bare-fallback {
@@ -474,6 +512,10 @@ body {
   color: inherit;
   font: inherit;
   cursor: pointer;
+  touch-action: none; /* タッチでのドラッグをブラウザのスクロールに奪われないようにする */
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .mw-portrait-btn:disabled {

@@ -6,6 +6,7 @@ export default function MonsterPortrait({
   character,
   size = "small",
   selected = false,
+  ready = false,
   footer,
   frameless = false,
 }) {
@@ -15,7 +16,13 @@ export default function MonsterPortrait({
 
   if (frameless) {
     return url ? (
-      <img src={url} alt={character?.name || ""} className="mw-portrait-bare-img" style={{ filter }} />
+      <img
+        src={url}
+        alt={character?.name || ""}
+        className="mw-portrait-bare-img"
+        style={{ filter }}
+        draggable={false}
+      />
     ) : (
       <div className="mw-portrait-bare-fallback">{character ? "❓" : ""}</div>
     );
@@ -25,10 +32,16 @@ export default function MonsterPortrait({
     <div
       className={`mw-portrait-frame ${rarity ? `mw-portrait-${rarity}` : ""} ${
         selected ? "mw-portrait-selected" : ""
-      }`}
+      } ${ready ? "mw-portrait-ready" : ""}`}
     >
       {url ? (
-        <img src={url} alt={character.name} className="mw-portrait-img" style={{ filter }} />
+        <img
+          src={url}
+          alt={character.name}
+          className="mw-portrait-img"
+          style={{ filter }}
+          draggable={false}
+        />
       ) : (
         <div className="mw-portrait-fallback">{character ? "❓" : ""}</div>
       )}
