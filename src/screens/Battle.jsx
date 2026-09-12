@@ -26,6 +26,10 @@ const STAGGER_MS = 110;
 const STAGGER_JITTER_MS = 90;
 // 3体分のダメージ表記/バーストが重なりすぎないようにする表示位置のずらし幅。
 const OFFSET_SPREAD = 30;
+// 自分たちの攻撃が落ち着いてから、敵の反撃(下がる→引っ掻く→揺れる)が始まるまでの間。
+const COUNTER_LEAD_MS = 280;
+// 敵の反撃演出(引っ掻き)がどれくらいの時間表示されるか。
+const COUNTER_FX_MS = 600;
 
 function buildEncounters(params, chapter, gradeData) {
   const { kind, subUnitId } = params;
@@ -46,6 +50,20 @@ function buildEncounters(params, chapter, gradeData) {
   return [];
 }
 
+// el を stageEl 基準の座標系（PixiJSのapp.screenと同じCSSピクセル単位）に変換する。
+function pointOf(el, stageEl) {
+  if (!el || !stageEl) return null;
+  const r = el.getBoundingClientRect();
+  const s = stageEl.getBoundingClientRect();
+  return { x: r.left + r.width / 2 - s.left, y: r.top + r.height / 2 - s.top };
+}
+function rectOf(el, stageEl) {
+  if (!el || !stageEl) return null;
+  const r = el.getBoundingClientRect();
+  const s = stageEl.getBoundingClientRect();
+  return { x: r.left - s.left, y: r.top - s.top, width: r.width, height: r.height };
+}
+
 export default function Battle({ nav, params }) {
   const { grade, chapterId, kind } = params;
   const { save, actions, charactersById } = useGame();
@@ -64,11 +82,23 @@ export default function Battle({ nav, params }) {
   const [log, setLog] = useState("");
   const [totals, setTotals] = useState({ exp: 0, coins: 0 });
   const fxRef = useRef(null);
-  const [shake, setShake] = useState(false);
+  const [enemyShake, setEnemyShake] = useState(false);
+  const [partyShake, setPartyShake] = useState(false);
+  const [enemyLunge, setEnemyLunge] = useState(false);
 
-  function triggerShake(ms) {
-    setShake(true);
-    setTimeout(() => setShake(false), ms);
+  // 舞台（敵表示＋パーティ表示をまとめた1枚）と、各要素の位置を測るためのref。
+  const stageRef = useRef(null);
+  const enemyPortraitRef = useRef(null);
+  const partyAreaRef = useRef(null);
+  const portraitRefs = useRef({});
+
+  function triggerEnemyShake(ms) {
+    setEnemyShake(true);
+    setTimeout(() => setEnemyShake(false), ms);
+  }
+  function triggerPartyShake(ms) {
+    setPartyShake(true);
+    setTimeout(() => setPartyShake(false), ms);
   }
 
   const enemy = encounters[encounterIndex];
@@ -86,12 +116,10 @@ export default function Battle({ nav, params }) {
     setPhase("question");
   }
 
-  // 3体分の攻撃(またはミス)が出そろった後にまとめて呼ぶ。HPバー・ログ・シェイクは
-  // ここで一括更新＝見た目の着弾とゲーム状態の更新を同期させる。
-  function applyPartyImpact({ missed, hits }) {
+  // 自分たちの攻撃が出そろった後の後始末：敵が生きていれば「下がる→引っ掻く→揺れる」の
+  // 反撃シーケンスを挟んでからダメージを反映する。倒した場合は反撃なしで即結果へ。
+  function resolveAfterPartyAttack({ missed, hits }) {
     const totalDamage = missed ? 0 : hits.reduce((s, h) => s + h.attack.damage, 0);
-    const anyCrit = !missed && hits.some((h) => h.attack.isCrit);
-    if (!missed) triggerShake(anyCrit ? 450 : 220);
 
     const headline = missed
       ? "パーティの攻撃は届かなかった…（不正解）"
@@ -109,16 +137,27 @@ export default function Battle({ nav, params }) {
       setTotals((t) => ({ exp: t.exp + gainedExp, coins: t.coins + gainedCoins }));
       setLog(`${headline}\n${enemy.name} をたおした！`);
       setPhase("result");
-      fxRef.current?.playDefeat();
-      triggerShake(500);
+      fxRef.current?.playDefeat({ to: pointOf(enemyPortraitRef.current, stageRef.current) });
+      triggerEnemyShake(500);
       return;
     }
 
-    const dmg = resolveEnemyAttack(enemy);
-    const newPartyHp = Math.max(0, partyHp - dmg);
-    setPartyHp(newPartyHp);
-    setLog(`${headline}\n${enemy.name} の反撃、${dmg}ダメージ！`);
-    setPhase(newPartyHp <= 0 ? "defeat" : "result");
+    // 敵が生きている → 少し間を置いて反撃シーケンス（下がる→引っ掻く→揺れる）
+    setTimeout(() => {
+      setEnemyLunge(true);
+      const partyRect = rectOf(partyAreaRef.current, stageRef.current);
+      fxRef.current?.playEnemyCounter({ rect: partyRect });
+      triggerPartyShake(420);
+      setTimeout(() => setEnemyLunge(false), 320);
+
+      setTimeout(() => {
+        const dmg = resolveEnemyAttack(enemy);
+        const newPartyHp = Math.max(0, partyHp - dmg);
+        setPartyHp(newPartyHp);
+        setLog(`${headline}\n${enemy.name} の反撃、${dmg}ダメージ！`);
+        setPhase(newPartyHp <= 0 ? "defeat" : "result");
+      }, COUNTER_FX_MS);
+    }, COUNTER_LEAD_MS);
   }
 
   function pickChoice(index) {
@@ -129,23 +168,29 @@ export default function Battle({ nav, params }) {
     if (correct) playCorrectSound();
     else playIncorrectSound();
 
+    const stageEl = stageRef.current;
+    const toPoint = pointOf(enemyPortraitRef.current, stageEl);
+
     setTimeout(() => {
       if (!correct) {
-        fxRef.current?.playMiss({ subject: subjectFor(partyMembers[0]) });
+        const fromPoint = pointOf(portraitRefs.current[partyMembers[0]?.id], stageEl);
+        fxRef.current?.playMiss({ subject: subjectFor(partyMembers[0]), from: fromPoint, to: toPoint });
         setTimeout(
-          () => applyPartyImpact({ missed: true, hits: [] }),
+          () => resolveAfterPartyAttack({ missed: true, hits: [] }),
           PROJECTILE_MS.miss
         );
         return;
       }
 
-      // 正解＝3体同時にこうげき。誰かを選ぶのではなく全員が殴る。
+      // 正解＝3体同時にこうげき。誰かを選ぶのではなく全員が殴る。「選んだ3体」＝
+      // パーティにいる3体それぞれの、実際に表示されている位置からたまを飛ばす。
       const hits = partyMembers.map((c) => {
         const level = levelFromExp(save.owned[c.id]?.exp || 0, c.rarity);
         const charSubject = subjectFor(c);
         const useSkillNow = !!skillToggle[c.id] && !skillUsed[c.id];
         const attack = resolvePlayerAttack(c, level, charSubject, true, useSkillNow);
-        return { character: c, attack, subject: charSubject, useSkill: useSkillNow };
+        const from = pointOf(portraitRefs.current[c.id], stageEl);
+        return { character: c, attack, subject: charSubject, useSkill: useSkillNow, from };
       });
 
       let maxLanding = 0;
@@ -162,6 +207,8 @@ export default function Battle({ nav, params }) {
             damage: h.attack.damage,
             isCrit: h.attack.isCrit,
             subject: h.subject,
+            from: h.from,
+            to: toPoint,
             offset,
           });
         }, stagger);
@@ -176,7 +223,7 @@ export default function Battle({ nav, params }) {
         });
       }
 
-      setTimeout(() => applyPartyImpact({ missed: false, hits }), maxLanding);
+      setTimeout(() => resolveAfterPartyAttack({ missed: false, hits }), maxLanding);
     }, ANSWER_SOUND_LEAD_MS);
   }
 
@@ -234,64 +281,73 @@ export default function Battle({ nav, params }) {
         <span>{topSubjectLabel}のバトル</span>
       </div>
 
-      <div className={`mw-panel mw-enemy ${shake ? "mw-shake" : ""}`}>
+      {/* 敵とパーティを1つの舞台にまとめる：たまが「選んだキャラの位置」から
+          飛べるように、敵の攻撃がパーティの上に出せるように、両方が同じ
+          座標系の上にいる必要があるため。FXのCanvasはこの舞台全体に1枚だけ重ねる。 */}
+      <div className="mw-panel mw-battle-stage" ref={stageRef}>
         <BattleFX ref={fxRef} />
-        <div className="mw-enemy-portrait">
-          <MonsterPortrait character={enemy} size="full" />
-        </div>
-        <div style={{ fontWeight: 700 }}>{enemy.name}</div>
-        <div className="mw-hpbar" style={{ margin: "8px 0" }}>
-          <div style={{ width: `${Math.max(0, (enemyHp / enemy.maxHp) * 100)}%` }} />
-        </div>
-        <div className="mw-sub">
-          {enemyHp} / {enemy.maxHp}
-        </div>
-      </div>
 
-      <div className="mw-panel">
-        <div className="mw-sub" style={{ marginBottom: 8 }}>
-          パーティ（HPは3体合算・スキルはポートレートをタップで発動予約）
+        <div className={`mw-enemy-area ${enemyShake ? "mw-shake" : ""} ${enemyLunge ? "mw-lunge" : ""}`}>
+          <div className="mw-enemy-portrait" ref={enemyPortraitRef}>
+            <MonsterPortrait character={enemy} size="full" />
+          </div>
+          <div style={{ fontWeight: 700 }}>{enemy.name}</div>
+          <div className="mw-hpbar" style={{ margin: "8px 0" }}>
+            <div style={{ width: `${Math.max(0, (enemyHp / enemy.maxHp) * 100)}%` }} />
+          </div>
+          <div className="mw-sub">
+            {enemyHp} / {enemy.maxHp}
+          </div>
         </div>
-        <div className="mw-party-row" style={{ marginBottom: 10 }}>
-          {partyMembers.map((c) => {
-            const hasSkill = !!c.skill;
-            const used = !!skillUsed[c.id];
-            const toggled = !!skillToggle[c.id];
-            return (
-              <button
-                key={c.id}
-                className="mw-portrait-btn"
-                disabled={phase !== "choose" || !hasSkill || used}
-                onClick={() => setSkillToggle((s) => ({ ...s, [c.id]: !s[c.id] }))}
-              >
-                <MonsterPortrait
-                  character={c}
-                  size="small"
-                  selected={toggled}
-                  footer={
-                    <>
-                      {c.name}
-                      {hasSkill && (
-                        <div style={{ color: toggled ? "var(--accent)" : "var(--text-dim)" }}>
-                          {used
-                            ? "スキル使用済"
-                            : toggled
-                            ? `${c.skill.icon}発動予約`
-                            : `${c.skill.icon}タップで発動`}
-                        </div>
-                      )}
-                    </>
-                  }
-                />
-              </button>
-            );
-          })}
-        </div>
-        <div className="mw-hpbar">
-          <div style={{ width: `${Math.max(0, (partyHp / PARTY_MAX_HP) * 100)}%` }} />
-        </div>
-        <div className="mw-sub">
-          {partyHp} / {PARTY_MAX_HP}
+
+        <div className={`mw-party-area ${partyShake ? "mw-shake" : ""}`} ref={partyAreaRef}>
+          <div className="mw-sub" style={{ marginBottom: 8 }}>
+            パーティ（HPは3体合算・スキルはポートレートをタップで発動予約）
+          </div>
+          <div className="mw-party-row" style={{ marginBottom: 10 }}>
+            {partyMembers.map((c) => {
+              const hasSkill = !!c.skill;
+              const used = !!skillUsed[c.id];
+              const toggled = !!skillToggle[c.id];
+              return (
+                <button
+                  key={c.id}
+                  className="mw-portrait-btn"
+                  ref={(el) => {
+                    portraitRefs.current[c.id] = el;
+                  }}
+                  disabled={phase !== "choose" || !hasSkill || used}
+                  onClick={() => setSkillToggle((s) => ({ ...s, [c.id]: !s[c.id] }))}
+                >
+                  <MonsterPortrait
+                    character={c}
+                    size="small"
+                    selected={toggled}
+                    footer={
+                      <>
+                        {c.name}
+                        {hasSkill && (
+                          <div style={{ color: toggled ? "var(--accent)" : "var(--text-dim)" }}>
+                            {used
+                              ? "スキル使用済"
+                              : toggled
+                              ? `${c.skill.icon}発動予約`
+                              : `${c.skill.icon}タップで発動`}
+                          </div>
+                        )}
+                      </>
+                    }
+                  />
+                </button>
+              );
+            })}
+          </div>
+          <div className="mw-hpbar">
+            <div style={{ width: `${Math.max(0, (partyHp / PARTY_MAX_HP) * 100)}%` }} />
+          </div>
+          <div className="mw-sub">
+            {partyHp} / {PARTY_MAX_HP}
+          </div>
         </div>
       </div>
 

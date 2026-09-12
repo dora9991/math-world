@@ -131,6 +131,15 @@ export function playMissSound() {
   noiseBurst(c, { duration: 0.18, gain: 0.18, filterFreq: 500, filterType: "lowpass" });
 }
 
+/** 敵の反撃（引っ掻き）音。低いうなり＋ひっかくようなノイズ。 */
+export function playEnemyHitSound() {
+  const c = getCtx();
+  if (!c) return;
+  tone(c, { freq: 180, endFreq: 90, type: "sawtooth", duration: 0.2, gain: 0.28 });
+  noiseBurst(c, { duration: 0.22, gain: 0.32, filterFreq: 2200, filterType: "highpass", delay: 0.02 });
+  noiseBurst(c, { duration: 0.16, gain: 0.22, filterFreq: 3200, filterType: "highpass", delay: 0.1 });
+}
+
 /** 撃破音（華やかに）。 */
 export function playDefeatSound() {
   const c = getCtx();

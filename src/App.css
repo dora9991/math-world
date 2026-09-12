@@ -173,11 +173,31 @@ body {
   transition: width 0.25s ease;
 }
 
-.mw-enemy {
+/* バトル画面：敵表示＋パーティ表示を1つの舞台にまとめ、その上にFXの
+   Canvasを1枚重ねる。「選んだキャラの位置からたまが飛ぶ」「敵の攻撃が
+   パーティの上で引っ掻く」を実現するには、両方が同じ舞台の上にいる
+   必要があるため（2026-09-12・5回目）。*/
+.mw-battle-stage {
   position: relative;
-  text-align: center;
-  padding: 18px 0;
   overflow: hidden;
+}
+
+.mw-enemy-area {
+  text-align: center;
+  padding: 18px 0 6px;
+  position: relative;
+  z-index: 1;
+  transition: transform 0.28s ease;
+}
+
+.mw-enemy-area.mw-lunge {
+  transform: translateY(22px);
+}
+
+.mw-party-area {
+  position: relative;
+  z-index: 1;
+  padding: 6px 0 2px;
 }
 
 .mw-enemy-emoji {
