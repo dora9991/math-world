@@ -1,10 +1,25 @@
 import { monsterImageUrl, monsterImgFilter } from "../data/monsterImages.js";
 
 // 四角枠に囲まれたキャラ画像。画像が無いアート型のときは絵文字にフォールバック。
-export default function MonsterPortrait({ character, size = "small", selected = false, footer }) {
+// frameless=true のときは枠なし（敵表示用。2026-09-12指示：敵は四角枠を外す）。
+export default function MonsterPortrait({
+  character,
+  size = "small",
+  selected = false,
+  footer,
+  frameless = false,
+}) {
   const url = character ? monsterImageUrl(character, size) : null;
   const filter = character ? monsterImgFilter(character) : "none";
   const rarity = character?.rarity;
+
+  if (frameless) {
+    return url ? (
+      <img src={url} alt={character?.name || ""} className="mw-portrait-bare-img" style={{ filter }} />
+    ) : (
+      <div className="mw-portrait-bare-fallback">{character ? "❓" : ""}</div>
+    );
+  }
 
   const frame = (
     <div

@@ -187,11 +187,6 @@ body {
   padding: 18px 0 6px;
   position: relative;
   z-index: 1;
-  transition: transform 0.28s ease;
-}
-
-.mw-enemy-area.mw-lunge {
-  transform: translateY(22px);
 }
 
 .mw-party-area {
@@ -391,6 +386,83 @@ body {
   margin: 0 auto;
   position: relative;
   z-index: 1;
+}
+
+/* 敵は四角枠なし（2026-09-12指示）。1〜3体を横に並べる。 */
+.mw-enemy-row {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.mw-enemy-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 180px;
+  position: relative;
+  padding: 6px;
+  border-radius: 12px;
+  transition: box-shadow 0.15s ease, background 0.15s ease, transform 0.28s ease;
+}
+
+.mw-enemy-slot.mw-lunge {
+  transform: translateY(22px);
+}
+
+.mw-enemy-slot.mw-enemy-defeated {
+  opacity: 0.25;
+  filter: grayscale(1);
+}
+
+/* ドラッグ中、指を乗せている敵を光らせる（攻撃対象のドロップ先） */
+.mw-enemy-slot.mw-enemy-drop-hover {
+  background: rgba(255, 207, 77, 0.2);
+  box-shadow: 0 0 0 3px var(--accent);
+}
+
+.mw-portrait-bare-img {
+  width: 100%;
+  max-width: 150px;
+  aspect-ratio: 1;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.5));
+}
+
+.mw-portrait-bare-fallback {
+  font-size: 2rem;
+}
+
+.mw-enemy-name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* パーティ側からドラッグ中に指に付いてくる小さいアイコン */
+.mw-drag-ghost {
+  position: fixed;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 999;
+  border: 3px solid var(--accent);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%);
+  background: #0e1024;
+}
+
+.mw-drag-ghost img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .mw-portrait-btn {
