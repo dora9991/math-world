@@ -14,10 +14,14 @@
 // 2026-09-12（2回目）：kazu制作の実際の効果音ファイル(m4a)を追加。
 //   `src/assets/sfx/` に置き、AudioBufferとして事前デコード→
 //   AudioBufferSourceNodeで鳴らす（<audio>要素より低遅延・多重再生に強い）。
-//   現状ある素材：発動２.m4a(自分の攻撃開始音)→player-attack-start.m4a、
+//   発動２.m4a(自分の攻撃開始音)→player-attack-start.m4a、
 //   発動効果音.m4a(敵の攻撃開始音)→enemy-attack-start.m4a。
-//   指定されたダメージ５.m4a／ダメージ２.m4aは未着手（ファイル未提供）
-//   のため、その2箇所は引き続き合成音のまま（#todo 素材が届いたら差し替え）。
+//
+// 2026-09-12（3回目）：残り2つの実素材が届いたので差し替え完了。
+//   ダメージ５.m4a(着弾音＝敵に当てた音)→hit-enemy.m4a、
+//   ダメージ２.m4a(被弾音＝こちらがダメージを受けた音)→hit-player.m4a。
+//   これで6種類の効果音のうち4種類が実音声、残り2種類（正解/不正解の
+//   ピンポン・ブザー）だけが合成音のまま（#todo 実素材が届けば差し替え）。
 // ============================================================
 
 let ctx = null;
@@ -69,8 +73,9 @@ function loadSfxBuffer(filename) {
   return promise;
 }
 
-/** 実音声ファイルを鳴らす。まだデコード中でも、済み次第すぐ再生を試みる。 */
-function playSfx(filename, { gain = 0.9 } = {}) {
+/** 実音声ファイルを鳴らす。まだデコード中でも、済み次第すぐ再生を試みる。
+ *  rate: 再生速度(=ピッチ)。1未満で少し低く＝重く聞こえる（クリティカル用）。 */
+function playSfx(filename, { gain = 0.9, rate = 1 } = {}) {
   const c = getCtx();
   if (!c) return;
   const cached = loadSfxBuffer(filename);
@@ -79,6 +84,7 @@ function playSfx(filename, { gain = 0.9 } = {}) {
     if (!buffer) return;
     const src = c.createBufferSource();
     src.buffer = buffer;
+    src.playbackRate.value = rate;
     const g = c.createGain();
     g.gain.value = gain;
     src.connect(g);
@@ -93,6 +99,8 @@ export function unlockAudio() {
   getCtx();
   loadSfxBuffer("player-attack-start.m4a");
   loadSfxBuffer("enemy-attack-start.m4a");
+  loadSfxBuffer("hit-enemy.m4a");
+  loadSfxBuffer("hit-player.m4a");
 }
 
 function envGain(audioCtx, { attack = 0.005, peak = 0.5, decay = 0.15, delay = 0 } = {}) {
@@ -179,23 +187,10 @@ export function playLaunchSound({ crit = false } = {}) {
   tone(c, { freq: crit ? 900 : 700, endFreq: crit ? 300 : 260, type: "sine", duration: 0.12, gain: 0.15 });
 }
 
-/** 着弾音（たまが当たった瞬間）。#todo kazu指定の「ダメージ５.m4a」が届いたら
- *  playSfx("hit-enemy.m4a", ...) に差し替える（現状ファイル未受領のため合成音のまま）。
- *  クリティカルはより低く・大きく＝重い一撃。 */
+/** 着弾音（たまが当たった瞬間）。kazu制作の実素材(ダメージ５)。クリティカルは
+ *  再生速度を少し落として重く聞こえるようにしている（素材は1種類のみのため）。 */
 export function playImpactSound({ crit = false } = {}) {
-  const c = getCtx();
-  if (!c) return;
-  tone(c, { freq: crit ? 130 : 170, endFreq: crit ? 55 : 80, type: "sine", duration: crit ? 0.28 : 0.16, gain: crit ? 0.55 : 0.4 });
-  noiseBurst(c, {
-    duration: crit ? 0.22 : 0.14,
-    gain: crit ? 0.4 : 0.28,
-    filterFreq: crit ? 900 : 1400,
-    filterType: "bandpass",
-  });
-  if (crit) {
-    // 追加の高音のきらめき（クリティカルのみ）
-    tone(c, { freq: 1400, type: "triangle", duration: 0.12, gain: 0.18, delay: 0.03 });
-  }
+  playSfx("hit-enemy.m4a", { gain: crit ? 1.0 : 0.85, rate: crit ? 0.85 : 1 });
 }
 
 /** ミス（たまが届かず失速）の、こもった軽い音。 */
@@ -205,15 +200,9 @@ export function playMissSound() {
   noiseBurst(c, { duration: 0.18, gain: 0.18, filterFreq: 500, filterType: "lowpass" });
 }
 
-/** 敵の攻撃がこちらに当たった(＝こちらがダメージを受けた)音。#todo kazu指定の
- *  「ダメージ２.m4a」が届いたら playSfx("hit-player.m4a", ...) に差し替える
- *  （現状ファイル未受領のため合成音のまま）。低いうなり＋ひっかくようなノイズ。 */
+/** 敵の攻撃がこちらに当たった(＝こちらがダメージを受けた)音。kazu制作の実素材(ダメージ２)。 */
 export function playEnemyHitSound() {
-  const c = getCtx();
-  if (!c) return;
-  tone(c, { freq: 180, endFreq: 90, type: "sawtooth", duration: 0.2, gain: 0.28 });
-  noiseBurst(c, { duration: 0.22, gain: 0.32, filterFreq: 2200, filterType: "highpass", delay: 0.02 });
-  noiseBurst(c, { duration: 0.16, gain: 0.22, filterFreq: 3200, filterType: "highpass", delay: 0.1 });
+  playSfx("hit-player.m4a", { gain: 0.9 });
 }
 
 /** 撃破音（華やかに）。 */

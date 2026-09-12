@@ -13,6 +13,7 @@ import { levelFromExp } from "../engine/expCurve.js";
 import BattleFX, { PROJECTILE_MS } from "../fx/BattleFX.jsx";
 import { playCorrectSound, playIncorrectSound, playEnemyAttackStartSound } from "../fx/sound.js";
 import MonsterPortrait from "../components/MonsterPortrait.jsx";
+import { monsterImageUrl, monsterImgFilter } from "../data/monsterImages.js";
 
 const REWARD_EXP_GROUP = 12;
 const REWARD_EXP_BOSS = 40;
@@ -33,6 +34,10 @@ const COUNTER_FX_MS = 600;
 // 「敵の攻撃開始音」(発動効果音)が鳴ってから、実際に引っ掻き(ダメージ)が
 // 来るまでの予備動作の間。プレイヤー側の発射→着弾と同じ「音→間→衝撃」の型。
 const ENEMY_WINDUP_MS = 220;
+// 攻撃するキャラが枠から2倍の大きさで飛び出してから、実際にたまを撃つまでの間。
+const POPUP_GROW_MS = 220;
+const POPUP_HOLD_MS = 140;
+const POPUP_LEAD_MS = POPUP_GROW_MS + POPUP_HOLD_MS;
 
 function buildEncounters(params, chapter, gradeData) {
   const { kind, subUnitId } = params;
@@ -88,6 +93,8 @@ export default function Battle({ nav, params }) {
   const [enemyShake, setEnemyShake] = useState(false);
   const [partyShake, setPartyShake] = useState(false);
   const [enemyLunge, setEnemyLunge] = useState(false);
+  // 攻撃中に「枠から飛び出している」キャラをcharacterId->boolで管理。
+  const [poppedOut, setPoppedOut] = useState({});
 
   // 舞台（敵表示＋パーティ表示をまとめた1枚）と、各要素の位置を測るためのref。
   const stageRef = useRef(null);
@@ -132,6 +139,11 @@ export default function Battle({ nav, params }) {
 
     const newEnemyHp = Math.max(0, enemyHp - totalDamage);
     setEnemyHp(newEnemyHp);
+
+    if (!missed) {
+      const anyCrit = hits.some((h) => h.attack.isCrit);
+      triggerEnemyShake(anyCrit ? 450 : 220); // 攻撃が当たったら敵のイラストも揺れる
+    }
 
     if (!missed && newEnemyHp <= 0) {
       const isBoss = encounterIndex === encounters.length - 1;
@@ -206,11 +218,17 @@ export default function Battle({ nav, params }) {
       hits.forEach((h, i) => {
         const stagger = i * STAGGER_MS + Math.random() * STAGGER_JITTER_MS;
         const travel = h.attack.isCrit ? PROJECTILE_MS.crit : PROJECTILE_MS.normal;
-        maxLanding = Math.max(maxLanding, stagger + travel);
+        maxLanding = Math.max(maxLanding, stagger + POPUP_LEAD_MS + travel);
         const offset = {
           dx: (i - 1) * OFFSET_SPREAD + (Math.random() * 12 - 6),
           dy: Math.random() * 14 - 7,
         };
+
+        // 枠から全体のイラストが飛び出す→少し間を置いてから、たまを撃つ。
+        setTimeout(() => {
+          setPoppedOut((s) => ({ ...s, [h.character.id]: true }));
+        }, stagger);
+
         setTimeout(() => {
           fxRef.current?.playHit({
             damage: h.attack.damage,
@@ -220,7 +238,8 @@ export default function Battle({ nav, params }) {
             to: toPoint,
             offset,
           });
-        }, stagger);
+          setPoppedOut((s) => ({ ...s, [h.character.id]: false })); // 攻撃と同時に枠へ戻り始める
+        }, stagger + POPUP_LEAD_MS);
       });
 
       const usedIds = hits.filter((h) => h.useSkill).map((h) => h.character.id);
@@ -249,11 +268,13 @@ export default function Battle({ nav, params }) {
       setEnemyHp(encounters[nextIndex].hp);
       setPhase("choose");
       setSkillToggle({});
+      setPoppedOut({});
       setLog("");
       return;
     }
     setPhase("choose");
     setSkillToggle({});
+    setPoppedOut({});
     setLog("");
   }
 
@@ -313,11 +334,12 @@ export default function Battle({ nav, params }) {
           <div className="mw-sub" style={{ marginBottom: 8 }}>
             パーティ（HPは3体合算・スキルはポートレートをタップで発動予約）
           </div>
-          <div className="mw-party-row" style={{ marginBottom: 10 }}>
+          <div className="mw-party-row mw-party-row-small" style={{ marginBottom: 10 }}>
             {partyMembers.map((c) => {
               const hasSkill = !!c.skill;
               const used = !!skillUsed[c.id];
               const toggled = !!skillToggle[c.id];
+              const popped = !!poppedOut[c.id];
               return (
                 <button
                   key={c.id}
@@ -347,6 +369,16 @@ export default function Battle({ nav, params }) {
                       </>
                     }
                   />
+                  {/* 攻撃の瞬間、枠から全体のイラストが2倍の大きさで飛び出す */}
+                  {monsterImageUrl(c, "full") && (
+                    <div className={`mw-portrait-popup ${popped ? "mw-popup-show" : ""}`}>
+                      <img
+                        src={monsterImageUrl(c, "full")}
+                        alt=""
+                        style={{ filter: monsterImgFilter(c) }}
+                      />
+                    </div>
+                  )}
                 </button>
               );
             })}

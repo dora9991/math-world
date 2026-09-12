@@ -394,6 +394,7 @@ body {
 }
 
 .mw-portrait-btn {
+  position: relative; /* 攻撃時に飛び出すポップアップ(mw-portrait-popup)の基準位置 */
   background: none;
   border: none;
   padding: 0;
@@ -406,4 +407,40 @@ body {
 .mw-portrait-btn:disabled {
   cursor: default;
   opacity: 0.85;
+}
+
+/* バトル画面のパーティ表示：枠を半分の大きさにする（2026-09-12指示） */
+.mw-party-row-small .mw-portrait-frame {
+  width: 50%;
+  margin: 0 auto;
+}
+
+/* 攻撃する瞬間、四角の枠から全体のイラストが2倍の大きさで飛び出す演出。
+   枠(50%幅)のちょうど2倍＝ボタン自体の幅(100%)を使う。 */
+.mw-portrait-popup {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 100%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%) scale(0.3);
+  opacity: 0;
+  z-index: 25;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.55));
+  transition: transform 0.22s ease-out, opacity 0.22s ease-out;
+}
+
+.mw-portrait-popup.mw-popup-show {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
+.mw-portrait-popup img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
