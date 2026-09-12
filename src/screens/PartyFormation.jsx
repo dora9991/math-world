@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useGame } from "../context/GameContext.jsx";
 import { SUBJECT_LABEL } from "../data/storyMap.js";
 import { expProgress } from "../engine/expCurve.js";
+import MonsterPortrait from "../components/MonsterPortrait.jsx";
 
 const SUBJECT_COLOR = {
   calc: "var(--calc)",
@@ -49,7 +50,17 @@ export default function PartyFormation({ nav }) {
 
       <div className="mw-panel">
         <div className="mw-sub" style={{ marginBottom: 8 }}>
-          出撃する3体
+          出撃する3体（HPはバトル中3体合算）
+        </div>
+        <div className="mw-party-row" style={{ marginBottom: 12 }}>
+          {[0, 1, 2].map((slot) => {
+            const c = save.party[slot] ? charactersById[save.party[slot]] : null;
+            return (
+              <button key={slot} className="mw-portrait-btn" onClick={() => setPickingSlot(slot)}>
+                <MonsterPortrait character={c} size="small" footer={c ? c.name : "（空き枠）"} />
+              </button>
+            );
+          })}
         </div>
         {[0, 1, 2].map((slot) => {
           const c = save.party[slot] ? charactersById[save.party[slot]] : null;
@@ -90,8 +101,15 @@ export default function PartyFormation({ nav }) {
                 setPickingSlot(null);
               }}
             >
-              <span className={`mw-rarity mw-rarity-${c.rarity}`}>{c.rarity}</span> {c.name}
-              <div className="mw-sub">{c.theme}</div>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <div style={{ width: 44 }}>
+                  <MonsterPortrait character={c} size="small" />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <span className={`mw-rarity mw-rarity-${c.rarity}`}>{c.rarity}</span> {c.name}
+                  <div className="mw-sub">{c.theme}</div>
+                </div>
+              </div>
               <StatBars character={c} />
             </button>
           ))}

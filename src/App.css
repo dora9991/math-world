@@ -306,3 +306,84 @@ body {
 .mw-rarity-R { background: #7fd0ff; }
 .mw-rarity-SR { background: #ffd166; }
 .mw-rarity-UR { background: #ff9ecb; }
+
+/* ---- モンスター/キャラ画像の四角枠 ---- */
+.mw-portrait-frame {
+  aspect-ratio: 1;
+  border-radius: 12px;
+  border: 3px solid #3a3f6b;
+  background: #0e1024;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mw-portrait-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mw-portrait-fallback {
+  font-size: 1.6rem;
+  opacity: 0.6;
+}
+
+.mw-portrait-N { border-color: #b9bdd8; }
+.mw-portrait-R { border-color: #7fd0ff; }
+.mw-portrait-SR { border-color: #ffd166; }
+.mw-portrait-UR { border-color: #ff9ecb; }
+
+.mw-portrait-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.mw-portrait-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.mw-portrait-footer {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.2;
+}
+
+.mw-party-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.mw-party-row .mw-portrait-frame {
+  width: 100%;
+}
+
+.mw-enemy-portrait {
+  width: 40%;
+  max-width: 160px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+}
+
+.mw-portrait-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mw-portrait-btn:disabled {
+  cursor: default;
+  opacity: 0.85;
+}

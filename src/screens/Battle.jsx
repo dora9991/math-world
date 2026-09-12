@@ -12,6 +12,7 @@ import { generateProblem } from "../engine/problemGenerators.js";
 import { getStatsAtLevel } from "../data/growthCurve.js";
 import { levelFromExp } from "../engine/expCurve.js";
 import BattleFX, { PROJECTILE_MS } from "../fx/BattleFX.jsx";
+import MonsterPortrait from "../components/MonsterPortrait.jsx";
 
 const REWARD_EXP_GROUP = 12;
 const REWARD_EXP_BOSS = 40;
@@ -200,7 +201,9 @@ export default function Battle({ nav, params }) {
 
       <div className={`mw-panel mw-enemy ${shake ? "mw-shake" : ""}`}>
         <BattleFX ref={fxRef} />
-        <div className="mw-enemy-emoji">{isBossTurn ? "👹" : "👾"}</div>
+        <div className="mw-enemy-portrait">
+          <MonsterPortrait character={enemy} size="full" />
+        </div>
         <div style={{ fontWeight: 700 }}>{enemy.name}</div>
         <div className="mw-hpbar" style={{ margin: "8px 0" }}>
           <div style={{ width: `${Math.max(0, (enemyHp / enemy.maxHp) * 100)}%` }} />
@@ -211,7 +214,26 @@ export default function Battle({ nav, params }) {
       </div>
 
       <div className="mw-panel">
-        <div className="mw-sub">パーティHP</div>
+        <div className="mw-sub" style={{ marginBottom: 8 }}>
+          パーティ（HPは3体合算）
+        </div>
+        <div className="mw-party-row" style={{ marginBottom: 10 }}>
+          {partyMembers.map((c) => (
+            <button
+              key={c.id}
+              className="mw-portrait-btn"
+              disabled={phase !== "choose"}
+              onClick={() => setSelectedCharId(c.id)}
+            >
+              <MonsterPortrait
+                character={c}
+                size="small"
+                selected={selectedCharId === c.id}
+                footer={c.name}
+              />
+            </button>
+          ))}
+        </div>
         <div className="mw-hpbar">
           <div style={{ width: `${Math.max(0, (partyHp / PARTY_MAX_HP) * 100)}%` }} />
         </div>
@@ -223,21 +245,7 @@ export default function Battle({ nav, params }) {
       {phase === "choose" && (
         <div className="mw-panel">
           <div className="mw-sub" style={{ marginBottom: 8 }}>
-            だれで攻撃する？
-          </div>
-          <div className="mw-row" style={{ flexWrap: "wrap" }}>
-            {partyMembers.map((c) => (
-              <button
-                key={c.id}
-                className="mw-btn small"
-                style={{
-                  outline: selectedCharId === c.id ? "3px solid var(--accent)" : "none",
-                }}
-                onClick={() => setSelectedCharId(c.id)}
-              >
-                {c.name}
-              </button>
-            ))}
+            {charactersById[selectedCharId]?.name} でこうげきする
           </div>
           {charactersById[selectedCharId]?.skill && (
             <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
