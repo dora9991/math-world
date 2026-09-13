@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getChapter, getGrade, CHAPTER_SUBJECT, SUBJECT_LABEL } from "../data/storyMap.js";
 import { useGame } from "../context/GameContext.jsx";
 import {
@@ -40,6 +40,8 @@ const POPUP_HOLD_MS = 140;
 const POPUP_LEAD_MS = POPUP_GROW_MS + POPUP_HOLD_MS;
 // ドラッグと判定するための、指を動かした距離のしきい値(px)。これ未満はタップ扱い。
 const DRAG_THRESHOLD_PX = 10;
+// 攻撃結果を表示してから、ボタンを押させずに自動で次のこうげきへ進むまでの間。
+const AUTO_ADVANCE_MS = 1400;
 
 // 「敵は1〜3体同時に出てくることもある」構成。1つの配列=1つの波(wave)。
 // 小単元：雑魚の波(1〜3体・同時)→ボスの波(1体)。章ボス/大ボスは単体の波1つだけ。
@@ -404,6 +406,14 @@ export default function Battle({ nav, params }) {
     setLog("");
   }
 
+  // 攻撃結果(result)は「つぎへ」ボタンを押させず、少し見せてから自動で次のこうげきへ。
+  useEffect(() => {
+    if (phase !== "result") return undefined;
+    const t = setTimeout(() => nextStep(), AUTO_ADVANCE_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
   function finishBattle() {
     for (const id of save.party.filter(Boolean)) {
       actions.addExp(id, Math.round(totals.exp / save.party.filter(Boolean).length));
@@ -579,9 +589,6 @@ export default function Battle({ nav, params }) {
           <div className="mw-log" style={{ whiteSpace: "pre-line" }}>
             {log}
           </div>
-          <button className="mw-btn primary" style={{ marginTop: 10 }} onClick={nextStep}>
-            つぎへ ▶
-          </button>
         </div>
       )}
 

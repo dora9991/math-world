@@ -22,18 +22,19 @@ export default function StoryIntro({ nav, params }) {
   const subUnit = subUnitId ? chapter?.subUnits.find((s) => s.id === subUnitId) : null;
 
   return (
-    <div className="mw-screen">
-      <div className="mw-panel mw-center" style={{ minHeight: "50vh" }}>
+    <div className="mw-fantasy-screen">
+      <div className="mw-fantasy-panel mw-center" style={{ minHeight: "50vh" }}>
         <div style={{ fontSize: "2.4rem" }}>📖</div>
-        <div>{introText(kind, chapter, subUnit, gradeData)}</div>
+        <div style={{ color: "#ffe9b3" }}>{introText(kind, chapter, subUnit, gradeData)}</div>
       </div>
       <button
-        className="mw-btn primary"
+        className="mw-fantasy-item mw-fantasy-pulse"
+        style={{ justifyContent: "center" }}
         onClick={() => nav.go("battle", params, { replace: true })}
       >
         たたかう ▶
       </button>
-      <button className="mw-btn small" onClick={() => nav.back()}>
+      <button className="mw-fantasy-back" onClick={() => nav.back()}>
         もどる
       </button>
     </div>

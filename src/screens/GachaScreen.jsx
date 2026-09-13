@@ -35,38 +35,50 @@ export default function GachaScreen({ nav, params }) {
   const alreadyOwned = result && !result.error && !!save.owned[result.id];
 
   return (
-    <div className="mw-screen">
-      <div className="mw-topbar">
-        <button className="mw-btn small" onClick={() => nav.back()}>
+    <div className="mw-fantasy-screen">
+      <div className="mw-fantasy-topbar">
+        <button className="mw-fantasy-back" onClick={() => nav.back()}>
           ← もどる
         </button>
-        <span>{chapter.name}のガチャ</span>
+        <span className="mw-fantasy-title" style={{ fontSize: "1.1rem" }}>
+          {chapter.name}のガチャ
+        </span>
+        <span style={{ width: 60 }} />
       </div>
 
-      <div className="mw-panel mw-center" style={{ minHeight: "40vh" }}>
+      <div className="mw-fantasy-panel mw-center" style={{ minHeight: "40vh" }}>
         {!result && <div style={{ fontSize: "2.4rem" }}>🎰</div>}
         {result && !result.error && (
           <>
             <div style={{ fontSize: "2.4rem" }}>✨</div>
             <div className={`mw-rarity mw-rarity-${result.rarity}`}>{result.rarity}</div>
-            <div className="mw-title" style={{ fontSize: "1.2rem" }}>
+            <div className="mw-fantasy-title" style={{ fontSize: "1.2rem" }}>
               {result.name}
             </div>
-            <div className="mw-sub">{result.theme}</div>
-            {alreadyOwned && <div className="mw-sub">（すでになかまのキャラでした）</div>}
+            <div style={{ color: "#ffe9b3", opacity: 0.8 }}>{result.theme}</div>
+            {alreadyOwned && (
+              <div style={{ color: "#ffe9b3", opacity: 0.8 }}>（すでになかまのキャラでした）</div>
+            )}
           </>
         )}
-        {result?.error && <div>{result.error}</div>}
+        {result?.error && <div style={{ color: "#ffe9b3" }}>{result.error}</div>}
       </div>
 
       {freePull && !freeUsed && (
-        <button className="mw-btn primary" onClick={doFreePull}>
-          🎉 無料で1回引く
+        <button className="mw-fantasy-item" style={{ justifyContent: "center" }} onClick={doFreePull}>
+          <span className="mw-fantasy-icon">🎉</span>
+          無料で1回引く
         </button>
       )}
 
-      <button className="mw-btn" onClick={doPaidPull} disabled={save.coins < PULL_COST}>
-        🪙{PULL_COST} で1回引く（所持 {save.coins}）
+      <button
+        className="mw-fantasy-item"
+        style={{ justifyContent: "center" }}
+        onClick={doPaidPull}
+        disabled={save.coins < PULL_COST}
+      >
+        <span className="mw-fantasy-icon">🪙</span>
+        {PULL_COST}で1回引く（所持 {save.coins}）
       </button>
     </div>
   );

@@ -40,18 +40,18 @@ export default function PartyFormation({ nav }) {
     .filter(Boolean);
 
   return (
-    <div className="mw-screen">
-      <div className="mw-topbar">
-        <button className="mw-btn small" onClick={() => nav.back()}>
+    <div className="mw-fantasy-screen">
+      <div className="mw-fantasy-topbar">
+        <button className="mw-fantasy-back" onClick={() => nav.back()}>
           ← もどる
         </button>
-        <span>パーティ編成</span>
+        <span className="mw-fantasy-title" style={{ fontSize: "1.1rem" }}>
+          パーティ編成
+        </span>
+        <span style={{ width: 60 }} />
       </div>
 
-      <div className="mw-panel">
-        <div className="mw-sub" style={{ marginBottom: 8 }}>
-          出撃する3体（HPはバトル中3体合算）
-        </div>
+      <div className="mw-fantasy-panel">
         <div className="mw-party-row" style={{ marginBottom: 12 }}>
           {[0, 1, 2].map((slot) => {
             const c = save.party[slot] ? charactersById[save.party[slot]] : null;
@@ -65,21 +65,21 @@ export default function PartyFormation({ nav }) {
         {[0, 1, 2].map((slot) => {
           const c = save.party[slot] ? charactersById[save.party[slot]] : null;
           return (
-            <div key={slot} className="mw-party-slot" style={{ marginBottom: 8 }}>
+            <div key={slot} className="mw-fantasy-item" style={{ cursor: "default" }}>
               <div style={{ flex: 1 }}>
                 {c ? (
                   <>
                     <span className={`mw-rarity mw-rarity-${c.rarity}`}>{c.rarity}</span>{" "}
                     <strong>{c.name}</strong>
-                    <div className="mw-sub">
+                    <div style={{ opacity: 0.75, fontWeight: 600 }}>
                       Lv{expProgress(save.owned[c.id]?.exp || 0, c.rarity).level}
                     </div>
                   </>
                 ) : (
-                  <span className="mw-sub">（空き枠）</span>
+                  <span style={{ opacity: 0.75 }}>（空き枠）</span>
                 )}
               </div>
-              <button className="mw-btn small" onClick={() => setPickingSlot(slot)}>
+              <button className="mw-fantasy-back" onClick={() => setPickingSlot(slot)}>
                 変更
               </button>
             </div>
@@ -88,14 +88,12 @@ export default function PartyFormation({ nav }) {
       </div>
 
       {pickingSlot !== null && (
-        <div className="mw-panel">
-          <div className="mw-sub" style={{ marginBottom: 8 }}>
-            {pickingSlot + 1}枠目に入れるキャラを選ぶ
-          </div>
+        <div className="mw-fantasy-panel">
           {ownedList.map((c) => (
             <button
               key={c.id}
-              className="mw-btn"
+              className="mw-fantasy-item"
+              style={{ flexDirection: "column", alignItems: "stretch" }}
               onClick={() => {
                 actions.setPartySlot(pickingSlot, c.id);
                 setPickingSlot(null);
@@ -107,13 +105,13 @@ export default function PartyFormation({ nav }) {
                 </div>
                 <div style={{ flex: 1 }}>
                   <span className={`mw-rarity mw-rarity-${c.rarity}`}>{c.rarity}</span> {c.name}
-                  <div className="mw-sub">{c.theme}</div>
+                  <div style={{ opacity: 0.75, fontWeight: 600 }}>{c.theme}</div>
                 </div>
               </div>
               <StatBars character={c} />
             </button>
           ))}
-          <button className="mw-btn small" onClick={() => setPickingSlot(null)}>
+          <button className="mw-fantasy-back" onClick={() => setPickingSlot(null)}>
             キャンセル
           </button>
         </div>
