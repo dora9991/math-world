@@ -4,19 +4,19 @@ export default function Settings({ nav }) {
   const { actions } = useGame();
 
   return (
-    <div className="mw-screen">
-      <div className="mw-topbar">
-        <button className="mw-btn small" onClick={() => nav.back()}>
+    <div className="mw-fantasy-screen">
+      <div className="mw-fantasy-topbar">
+        <button className="mw-fantasy-back" onClick={() => nav.back()}>
           ← もどる
         </button>
-        <span>設定</span>
+        <span className="mw-fantasy-title" style={{ fontSize: "1.1rem" }}>
+          設定
+        </span>
+        <span style={{ width: 60 }} />
       </div>
-      <div className="mw-panel">
-        <div className="mw-sub" style={{ marginBottom: 10 }}>
-          セーブデータはこの端末のブラウザ内（localStorage）にのみ保存されています。
-        </div>
+      <div className="mw-fantasy-panel">
         <button
-          className="mw-btn"
+          className="mw-fantasy-item"
           onClick={() => {
             if (confirm("セーブデータを消してはじめからにしますか？")) {
               actions.resetSave();
@@ -24,7 +24,8 @@ export default function Settings({ nav }) {
             }
           }}
         >
-          🗑 セーブデータをリセット
+          <span className="mw-fantasy-icon">🗑</span>
+          セーブデータをリセット
         </button>
       </div>
     </div>

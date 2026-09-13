@@ -6,26 +6,32 @@ const PLAYABLE_GRADES = [1];
 
 export default function StoryGradeMap({ nav }) {
   return (
-    <div className="mw-screen">
-      <div className="mw-topbar">
-        <button className="mw-btn small" onClick={() => nav.back()}>
+    <div className="mw-fantasy-screen">
+      <div className="mw-fantasy-topbar">
+        <button className="mw-fantasy-back" onClick={() => nav.back()}>
           ← もどる
         </button>
-        <span>ストーリーモード</span>
+        <span className="mw-fantasy-title" style={{ fontSize: "1.1rem" }}>
+          ストーリー
+        </span>
+        <span style={{ width: 60 }} />
       </div>
-      {STORY_MAP.map((g) => {
-        const playable = PLAYABLE_GRADES.includes(g.grade);
-        return (
-          <button
-            key={g.grade}
-            className="mw-btn"
-            disabled={!playable}
-            onClick={() => nav.go("chapterMap", { grade: g.grade })}
-          >
-            {g.label} {playable ? "" : "（準備中）"}
-          </button>
-        );
-      })}
+      <div className="mw-fantasy-panel">
+        {STORY_MAP.map((g) => {
+          const playable = PLAYABLE_GRADES.includes(g.grade);
+          return (
+            <button
+              key={g.grade}
+              className="mw-fantasy-item"
+              disabled={!playable}
+              onClick={() => nav.go("chapterMap", { grade: g.grade })}
+            >
+              <span className="mw-fantasy-icon">📖</span>
+              {g.label} {playable ? "" : "（準備中）"}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

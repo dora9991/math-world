@@ -6,9 +6,13 @@ export default function Title({ nav }) {
     nav.go("menu", {}, { replace: true });
   }
   return (
-    <div className="mw-center" onClick={start}>
-      <div className="mw-title">math world</div>
-      <div className="mw-sub">タップしてはじめる</div>
+    <div className="mw-fantasy-screen" onClick={start} style={{ justifyContent: "center" }}>
+      <div className="mw-fantasy-title" style={{ fontSize: "2.6rem" }}>
+        math world
+      </div>
+      <div className="mw-fantasy-panel mw-fantasy-pulse" style={{ alignItems: "center", margin: "0 auto" }}>
+        <span style={{ color: "#ffe9b3", fontWeight: 800 }}>タップしてはじめる</span>
+      </div>
     </div>
   );
 }

@@ -1,19 +1,18 @@
 export default function TagQuestStub({ nav }) {
   return (
-    <div className="mw-screen">
-      <div className="mw-topbar">
-        <button className="mw-btn small" onClick={() => nav.back()}>
+    <div className="mw-fantasy-screen">
+      <div className="mw-fantasy-topbar">
+        <button className="mw-fantasy-back" onClick={() => nav.back()}>
           ← もどる
         </button>
-        <span>タッグクエスト</span>
+        <span className="mw-fantasy-title" style={{ fontSize: "1.1rem" }}>
+          タッグクエスト
+        </span>
+        <span style={{ width: 60 }} />
       </div>
-      <div className="mw-panel mw-center" style={{ minHeight: "50vh" }}>
+      <div className="mw-fantasy-panel mw-center" style={{ minHeight: "50vh" }}>
         <div style={{ fontSize: "2.4rem" }}>🤝</div>
-        <div>準備中</div>
-        <div className="mw-sub">
-          タッグクエストの中身（誰と誰が組む？対戦？協力？）はまだ相談していません。
-          #todo 次回、仕様を決めてから実装する。
-        </div>
+        <div style={{ color: "#ffe9b3", fontWeight: 700 }}>準備中</div>
       </div>
     </div>
   );
