@@ -30,7 +30,7 @@ export default function StoryIntro({ nav, params }) {
       <button
         className="mw-fantasy-item mw-fantasy-pulse"
         style={{ justifyContent: "center" }}
-        onClick={() => nav.go("battle", params, { replace: true })}
+        onClick={() => nav.flashTo("battle", params, { replace: true })}
       >
         たたかう ▶
       </button>

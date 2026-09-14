@@ -33,8 +33,13 @@ const SCREENS = {
   settings: Settings,
 };
 
+// ホワイトアウトの時間（フェードイン→裏で画面切替→フェードアウト）
+const FLASH_IN_MS = 280;
+const FLASH_SETTLE_MS = 60;
+
 function useNav(initial) {
   const [stack, setStack] = useState([initial]);
+  const [flashOpacity, setFlashOpacity] = useState(0);
   const current = stack[stack.length - 1];
 
   function go(screen, params = {}, { replace = false } = {}) {
@@ -52,7 +57,16 @@ function useNav(initial) {
     setStack([{ screen, params }]);
   }
 
-  return { ...current, go, back, resetTo };
+  // 画面が白く覆われている間に裏で切り替え、そこから新しい画面へフェードアウトする。
+  function flashTo(screen, params = {}, opts = {}) {
+    setFlashOpacity(1);
+    setTimeout(() => {
+      go(screen, params, opts);
+      setTimeout(() => setFlashOpacity(0), FLASH_SETTLE_MS);
+    }, FLASH_IN_MS);
+  }
+
+  return { ...current, go, back, resetTo, flashTo, flashOpacity };
 }
 
 export default function App() {
@@ -63,6 +77,13 @@ export default function App() {
     <GameProvider>
       <div className="mw-app">
         <Screen params={nav.params} nav={nav} />
+        <div
+          className="mw-whiteout"
+          style={{
+            opacity: nav.flashOpacity,
+            pointerEvents: nav.flashOpacity > 0 ? "auto" : "none",
+          }}
+        />
       </div>
     </GameProvider>
   );

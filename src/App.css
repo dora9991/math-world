@@ -714,3 +714,31 @@ body {
   border-color: #fff6d8;
   outline: none;
 }
+
+/* 画面遷移のホワイトアウト（2026-09-14：戦闘へ入る前に一度白く覆う演出） */
+.mw-whiteout {
+  position: fixed;
+  inset: 0;
+  background: #ffffff;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+/* 敵キャラが常に上下にホワホワ動いている演出（2026-09-14）。
+   シェイク/引っ掻き時の下がる動き(transform)は親の.mw-enemy-slot側に
+   かかっているので、この浮遊アニメは子のimg側にかけて競合を避ける。 */
+@keyframes mw-enemy-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.mw-enemy-slot .mw-portrait-bare-img {
+  animation: mw-enemy-bob 2.6s ease-in-out infinite;
+  animation-delay: var(--bob-delay, 0s);
+}

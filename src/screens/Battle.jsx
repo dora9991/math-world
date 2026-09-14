@@ -455,7 +455,7 @@ export default function Battle({ nav, params }) {
 
         <div className="mw-enemy-area">
           <div className="mw-enemy-row">
-            {enemies.map((en) => {
+            {enemies.map((en, enIndex) => {
               const defeated = en.hp <= 0;
               return (
                 <div
@@ -465,6 +465,7 @@ export default function Battle({ nav, params }) {
                   } ${defeated ? "mw-enemy-defeated" : ""} ${
                     hoverTargetId === en.instanceId ? "mw-enemy-drop-hover" : ""
                   }`}
+                  style={{ "--bob-delay": `${enIndex * 0.35}s` }}
                   ref={(el) => {
                     enemyRefs.current[en.instanceId] = el;
                   }}
