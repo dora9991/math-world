@@ -742,3 +742,37 @@ body {
   animation: mw-enemy-bob 2.6s ease-in-out infinite;
   animation-delay: var(--bob-delay, 0s);
 }
+
+/* 問題の難易度選択（簡単/普通/難しい/鬼）。2026-09-14 */
+.mw-diff-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.mw-diff-btn {
+  flex: 1;
+  background: var(--panel-2);
+  border: 2px solid transparent;
+  border-radius: 10px;
+  padding: 8px 4px;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.mw-diff-btn.selected {
+  border-color: var(--accent);
+  background: #3a3f6b;
+}
+
+.mw-diff-mult {
+  font-size: 0.7rem;
+  opacity: 0.75;
+  font-weight: 600;
+}

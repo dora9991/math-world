@@ -8,7 +8,12 @@ import {
   spawnEnemyGroup,
   spawnBoss,
 } from "../engine/battleEngine.js";
-import { generateProblem } from "../engine/problemGenerators.js";
+import {
+  generateMathLaboProblem,
+  DIFFICULTY_KEYS,
+  DIFFICULTY_LABEL,
+  DIFFICULTY_DAMAGE_MULTIPLIER,
+} from "../engine/mathLaboProblems.js";
 import { levelFromExp } from "../engine/expCurve.js";
 import BattleFX, { PROJECTILE_MS } from "../fx/BattleFX.jsx";
 import { playCorrectSound, playIncorrectSound, playEnemyAttackStartSound } from "../fx/sound.js";
@@ -94,6 +99,8 @@ export default function Battle({ nav, params }) {
   // 各キャラが「どの敵を狙うか」。ドラッグで上書きするまでは自動割り振り。
   const [targets, setTargets] = useState({});
   const [problem, setProblem] = useState(null);
+  // 問題難易度（簡単/普通/難しい/鬼）。攻撃ボタンを押す前にターンごとに選ぶ。
+  const [difficulty, setDifficulty] = useState("standard");
   const [log, setLog] = useState("");
   const [totals, setTotals] = useState({ exp: 0, coins: 0 });
   const fxRef = useRef(null);
@@ -149,7 +156,7 @@ export default function Battle({ nav, params }) {
   }
 
   function startQuestion() {
-    setProblem(generateProblem(chapterId || "c1"));
+    setProblem(generateMathLaboProblem(chapterId, difficulty));
     setPhase("question");
   }
 
@@ -333,7 +340,12 @@ export default function Battle({ nav, params }) {
         const level = levelFromExp(save.owned[c.id]?.exp || 0, c.rarity);
         const charSubject = subjectFor(c);
         const useSkillNow = !!skillToggle[c.id] && (gauge[c.id] || 0) >= 10;
-        const attack = resolvePlayerAttack(c, level, charSubject, true, useSkillNow);
+        const rawAttack = resolvePlayerAttack(c, level, charSubject, true, useSkillNow);
+        // 難易度ダメージ倍率（簡単0.8〜鬼1.5）。この問題の難しさに応じて全員分にかかる。
+        const attack = {
+          ...rawAttack,
+          damage: Math.max(1, Math.round(rawAttack.damage * DIFFICULTY_DAMAGE_MULTIPLIER[difficulty])),
+        };
         const from = pointOf(portraitRefs.current[c.id], stageEl);
         const targetId = resolveTarget(c.id, i);
         const to = targetId ? pointOf(enemyRefs.current[targetId], stageEl) : null;
@@ -560,6 +572,18 @@ export default function Battle({ nav, params }) {
 
       {phase === "choose" && (
         <div className="mw-panel">
+          <div className="mw-diff-row">
+            {DIFFICULTY_KEYS.map((d) => (
+              <button
+                key={d}
+                className={`mw-diff-btn ${difficulty === d ? "selected" : ""}`}
+                onClick={() => setDifficulty(d)}
+              >
+                {DIFFICULTY_LABEL[d]}
+                <span className="mw-diff-mult">×{DIFFICULTY_DAMAGE_MULTIPLIER[d]}</span>
+              </button>
+            ))}
+          </div>
           <button className="mw-btn primary" onClick={startQuestion}>
             こうげき！
           </button>
