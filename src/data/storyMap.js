@@ -29,6 +29,21 @@ export const CHAPTER_SUBJECT = {
   c5: "geo",
   c6: "geo",
   c7: "data",
+  // 2026-09-16：中2・中3を追加。数学ラボ2の各章の内容に沿って5系統へ分類。
+  g2c1: "calc", // 式の計算
+  g2c2: "eq", // 連立方程式
+  g2c3: "func", // 一次関数
+  g2c4: "geo", // 平行と合同
+  g2c5: "geo", // 三角形と四角形
+  g2c6: "data", // 確率と統計
+  g3c1: "calc", // 式の展開と因数分解
+  g3c2: "calc", // 平方根
+  g3c3: "eq", // 2次方程式
+  g3c4: "func", // 関数y=ax²
+  g3c5: "geo", // 相似な図形
+  g3c6: "geo", // 円
+  g3c7: "geo", // 三平方の定理
+  g3c8: "data", // 標本調査
 };
 
 export const SUBJECT_LABEL = {
@@ -39,8 +54,7 @@ export const SUBJECT_LABEL = {
   data: "データ",
 };
 
-// 学年ごとの表示名（今回コンテンツがあるのは中1のみ。中2・中3はデータがあれば
-// 自動的に地図へ出るが、章の抜けがある可能性が高いので現状は未検証扱い）
+// 学年ごとの表示名
 export const GRADE_LABEL = {
   1: "中学1年",
   2: "中学2年",

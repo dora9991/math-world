@@ -317,6 +317,37 @@ function spawnDamageText(app, damage, crit, x, y) {
   });
 }
 
+// 2026-09-15：「被ダメージは引っ掻きエフェクトの近くに出す」への対応。
+// spawnDamageText(敵に与えたダメージ＝白/金)と対で、被弾側は赤系にして区別する。
+function spawnCounterDamageText(app, damage, x, y) {
+  const style = new PIXI.TextStyle({
+    fontFamily: "system-ui, sans-serif",
+    fontSize: 38,
+    fontWeight: "800",
+    fill: 0xff6a6a,
+    stroke: 0x2a0f0f,
+    strokeThickness: 7,
+  });
+  const text = new PIXI.Text(`-${damage}`, style);
+  text.anchor.set(0.5);
+  const margin = 40;
+  text.x = Math.min(app.screen.width - margin, Math.max(margin, x));
+  text.y = Math.max(24, y);
+  text.scale.set(0.3);
+  text.life = 1;
+  text.__t = 0;
+  app.stage.addChild(text);
+
+  addTicked(app, [text], (node, delta) => {
+    node.__t += delta;
+    const growPhase = Math.min(1, node.__t / 5);
+    node.scale.set(0.3 + growPhase * 0.8);
+    node.y -= 0.4 * delta;
+    if (node.__t > 10) node.alpha = Math.max(0, 1 - (node.__t - 10) / 9);
+    node.life = node.__t > 19 ? 0 : 1;
+  });
+}
+
 function flashScreen(app, color = 0xffffff, peak = 0.8) {
   const g = new PIXI.Graphics();
   g.beginFill(color);
@@ -356,13 +387,172 @@ function spawnMissPuff(app, x, y) {
   });
 }
 
+// 2026-09-15：「正解の場合は、正解！と派手なエフェクトが出るように」への対応。
+// 正解タイミングで即座に出す、画面中央上寄りの「正解！」ドーン演出。
+function spawnCorrectBurst(app) {
+  const cx = app.screen.width / 2;
+  const cy = app.screen.height * 0.34;
+
+  // 後ろに広がる金色の光条（回転しながらフェード）
+  const rayCount = 14;
+  const rays = [];
+  for (let i = 0; i < rayCount; i++) {
+    const g = new PIXI.Graphics();
+    const angle = (i / rayCount) * Math.PI * 2 + Math.random() * 0.15;
+    const len = 130 + Math.random() * 60;
+    g.lineStyle(6, 0xffe27a, 0.9);
+    g.moveTo(0, 0);
+    g.lineTo(Math.cos(angle) * len, Math.sin(angle) * len);
+    g.x = cx;
+    g.y = cy;
+    g.alpha = 0;
+    g.life = 1;
+    g.__t = 0;
+    g.blendMode = PIXI.BLEND_MODES.ADD;
+    app.stage.addChild(g);
+    rays.push(g);
+  }
+  addTicked(app, rays, (r, delta) => {
+    r.__t += delta;
+    r.rotation += 0.01 * delta;
+    if (r.__t < 4) r.alpha = Math.min(1, r.__t / 4) * 0.9;
+    else r.alpha = Math.max(0, 0.9 - (r.__t - 4) / 16);
+    r.life = r.__t > 24 ? 0 : 1;
+  });
+
+  // きらめく金色の粒子バースト（crit演出を流用、金/白/桃色系で映える）
+  spawnBurst(app, { crit: true, x: cx, y: cy });
+
+  // 本体テキスト「正解！」：少しオーバーシュートして弾みながら出現→浮いてフェード。
+  const style = new PIXI.TextStyle({
+    fontFamily: "system-ui, sans-serif",
+    fontSize: 64,
+    fontWeight: "900",
+    fill: ["#fff6d8", "#ffd166"],
+    fillGradientType: PIXI.TEXT_GRADIENT.LINEAR_VERTICAL,
+    stroke: 0xb5651d,
+    strokeThickness: 10,
+    dropShadow: true,
+    dropShadowColor: 0x000000,
+    dropShadowBlur: 8,
+    dropShadowDistance: 0,
+    dropShadowAlpha: 0.5,
+  });
+  const text = new PIXI.Text("正解！", style);
+  text.anchor.set(0.5);
+  text.x = cx;
+  text.y = cy;
+  text.scale.set(0.2);
+  text.alpha = 0;
+  text.life = 1;
+  text.__t = 0;
+  app.stage.addChild(text);
+
+  addTicked(app, [text], (node, delta) => {
+    node.__t += delta;
+    const growPhase = Math.min(1, node.__t / 6);
+    const overshoot = node.__t < 10 ? 1 + 0.25 * (1 - growPhase) : 1;
+    node.scale.set((0.3 + growPhase * 0.9) * overshoot);
+    node.alpha = Math.min(1, node.__t / 3);
+    if (node.__t > 26) node.alpha = Math.max(0, 1 - (node.__t - 26) / 14);
+    node.life = node.__t > 40 ? 0 : 1;
+  });
+
+  flashScreen(app, 0xfff2c4, 0.35);
+}
+
+// 2026-09-15：「戦いが始まった時は、START!という文字が出るように」への対応。
+// バトル開始時に一度だけ出す、勢いよく飛び込んでくる「START!」演出。
+function spawnStartBanner(app) {
+  const cx = app.screen.width / 2;
+  const cy = app.screen.height * 0.3;
+
+  // 左右から中央へ走り込む勢いの線（集束演出）
+  const streaks = [];
+  for (let i = 0; i < 10; i++) {
+    const g = new PIXI.Graphics();
+    const y = cy + (Math.random() - 0.5) * 90;
+    const fromLeft = i % 2 === 0;
+    const len = 160 + Math.random() * 90;
+    g.lineStyle(4, 0xffffff, 0.8);
+    g.moveTo(0, 0);
+    g.lineTo(fromLeft ? len : -len, 0);
+    g.x = fromLeft ? cx - len - 40 : cx + len + 40;
+    g.y = y;
+    g.alpha = 0;
+    g.life = 1;
+    g.__t = 0;
+    g.__dir = fromLeft ? 1 : -1;
+    g.blendMode = PIXI.BLEND_MODES.ADD;
+    app.stage.addChild(g);
+    streaks.push(g);
+  }
+  addTicked(app, streaks, (s, delta) => {
+    s.__t += delta;
+    s.x += s.__dir * 6 * delta;
+    if (s.__t < 4) s.alpha = Math.min(1, s.__t / 4) * 0.8;
+    else s.alpha = Math.max(0, 0.8 - (s.__t - 4) / 10);
+    s.life = s.__t > 16 ? 0 : 1;
+  });
+
+  const style = new PIXI.TextStyle({
+    fontFamily: "system-ui, sans-serif",
+    fontSize: 72,
+    fontWeight: "900",
+    fontStyle: "italic",
+    fill: ["#ffffff", "#ffe27a"],
+    fillGradientType: PIXI.TEXT_GRADIENT.LINEAR_VERTICAL,
+    stroke: 0x14172b,
+    strokeThickness: 12,
+    dropShadow: true,
+    dropShadowColor: 0x000000,
+    dropShadowBlur: 10,
+    dropShadowDistance: 0,
+    dropShadowAlpha: 0.6,
+  });
+  const text = new PIXI.Text("START!", style);
+  text.anchor.set(0.5);
+  text.x = cx;
+  text.y = cy;
+  text.scale.set(2.4);
+  text.alpha = 0;
+  text.life = 1;
+  text.__t = 0;
+  app.stage.addChild(text);
+
+  addTicked(app, [text], (node, delta) => {
+    node.__t += delta;
+    // 大きく→キュッと通常サイズへ収縮（勢いよく飛び込んでくる感じ）
+    const shrinkPhase = Math.min(1, node.__t / 7);
+    node.scale.set(2.4 - shrinkPhase * 1.4);
+    node.alpha = Math.min(1, node.__t / 2.5);
+    if (node.__t > 22) node.alpha = Math.max(0, 1 - (node.__t - 22) / 12);
+    node.life = node.__t > 34 ? 0 : 1;
+  });
+
+  flashScreen(app, 0xffffff, 0.4);
+}
+
+// 2026-09-15：敵が複数体いるとき「1体なら1回、3体なら3回」順番に反撃するように
+// なったので、引っ掻きの向きを4パターン用意し、呼び出し側(Battle.jsx)がシャッフルして
+// 割り当てる。同じターンの反撃どうし向きが被らないようにするため。
+const CLAW_VARIANTS = [
+  { angleMinDeg: -34, angleMaxDeg: -18 }, // 右上から
+  { angleMinDeg: 18, angleMaxDeg: 34 }, // 左上から
+  { angleMinDeg: 66, angleMaxDeg: 80 }, // 縦より少しだけ右斜め
+  { angleMinDeg: 100, angleMaxDeg: 114 }, // 縦より少し左斜め
+];
+
 // 敵の反撃：パーティの上に引っ掻き線を出す。rect はパーティ表示エリアの
-// {x,y,width,height}（舞台=stage基準の座標）。
-function spawnClawSlash(app, rect) {
+// {x,y,width,height}（舞台=stage基準の座標）。variantIndexで引っ掻きの向きを選ぶ
+// （省略時はランダム＝CLAW_VARIANTSから1つ）。
+function spawnClawSlash(app, rect, variantIndex) {
   const cx = rect ? rect.x + rect.width / 2 : app.screen.width / 2;
   const cy = rect ? rect.y + rect.height / 2 : app.screen.height / 2;
   const spanW = rect?.width ?? app.screen.width * 0.7;
   const spanH = rect?.height ?? 80;
+  const variant =
+    CLAW_VARIANTS[variantIndex] ?? CLAW_VARIANTS[Math.floor(Math.random() * CLAW_VARIANTS.length)];
 
   const streaks = [];
   const count = 3;
@@ -370,7 +560,9 @@ function spawnClawSlash(app, rect) {
     const g = new PIXI.Graphics();
     const laneOffset = (i - (count - 1) / 2) * (spanW * 0.24);
     const len = Math.max(spanH * 1.6, 70);
-    const angle = (-30 + Math.random() * 14) * (Math.PI / 180);
+    const angle =
+      (variant.angleMinDeg + Math.random() * (variant.angleMaxDeg - variant.angleMinDeg)) *
+      (Math.PI / 180);
     g.lineStyle(9, 0xff3b3b, 0.92);
     g.moveTo((-Math.cos(angle) * len) / 2, (-Math.sin(angle) * len) / 2);
     g.lineTo((Math.cos(angle) * len) / 2, (Math.sin(angle) * len) / 2);
@@ -440,6 +632,16 @@ const BattleFX = forwardRef(function BattleFX(_props, ref) {
         },
       });
     },
+    playCorrectBurst() {
+      const app = appRef.current;
+      if (!app) return;
+      spawnCorrectBurst(app);
+    },
+    playStartBanner() {
+      const app = appRef.current;
+      if (!app) return;
+      spawnStartBanner(app);
+    },
     playMiss({ subject, from, to } = {}) {
       const app = appRef.current;
       if (!app) return;
@@ -468,11 +670,18 @@ const BattleFX = forwardRef(function BattleFX(_props, ref) {
       playDefeatSound();
     },
     // rect: パーティ表示エリアの{x,y,width,height}（舞台基準）。
-    playEnemyCounter({ rect } = {}) {
+    // variantIndex: 引っ掻きの向き(0-3、CLAW_VARIANTS参照)。省略時はランダム。
+    // damage: 渡すと引っ掻きのすぐ近くに被ダメージ数値(-◯◯)を出す。
+    playEnemyCounter({ rect, variantIndex, damage } = {}) {
       const app = appRef.current;
       if (!app) return;
-      spawnClawSlash(app, rect);
+      spawnClawSlash(app, rect, variantIndex);
       playEnemyHitSound();
+      if (damage != null) {
+        const cx = rect ? rect.x + rect.width / 2 : app.screen.width / 2;
+        const cy = rect ? rect.y + rect.height / 2 : app.screen.height / 2;
+        spawnCounterDamageText(app, damage, cx + (Math.random() * 40 - 20), cy - 50);
+      }
     },
   }));
 

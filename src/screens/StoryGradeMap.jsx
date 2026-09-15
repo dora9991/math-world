@@ -1,8 +1,7 @@
 import { STORY_MAP } from "../data/storyMap.js";
 
-// 今回作ったのは中1(grade1)の第7章まで。中2・中3はデータが不完全なため
-// このMVPではロックしておく（#todo 中2以降のコンテンツ作成）。
-const PLAYABLE_GRADES = [1];
+// 2026-09-16：中2・中3の問題データ(数学ラボ2 grade2/grade3)を追加したので解放。
+const PLAYABLE_GRADES = [1, 2, 3];
 
 export default function StoryGradeMap({ nav }) {
   return (

@@ -34,11 +34,13 @@ const STAGGER_JITTER_MS = 90;
 const OFFSET_SPREAD = 30;
 // 自分たちの攻撃が落ち着いてから、敵の反撃(下がる→引っ掻く→揺れる)が始まるまでの間。
 const COUNTER_LEAD_MS = 280;
-// 敵の反撃演出(引っ掻き)がどれくらいの時間表示されるか。
-const COUNTER_FX_MS = 600;
-// 「敵の攻撃開始音」(発動効果音)が鳴ってから、実際に引っ掻き(ダメージ)が
-// 来るまでの予備動作の間。プレイヤー側の発射→着弾と同じ「音→間→衝撃」の型。
-const ENEMY_WINDUP_MS = 220;
+// 「敵の攻撃開始音」(発動効果音)が鳴ってから、実際に引っ掻き(＝ダメージ発生)が
+// 来るまでの予備動作の間。ここで被ダメージ数値・HPも即反映する。
+const ENEMY_STRIKE_WINDUP_MS = 100;
+// 反撃が複数回続くときの、1発ごとの間隔（「0.3秒ごとにどんどんくる」）。
+const ENEMY_ATTACK_STEP_MS = 300;
+// 引っ掻いた敵が「構え」を解除する(下がりポーズが戻る)までの見た目上の間。
+const ENEMY_LUNGE_CLEAR_MS = 180;
 // 攻撃するキャラが枠から2倍の大きさで飛び出してから、実際にたまを撃つまでの間。
 const POPUP_GROW_MS = 220;
 const POPUP_HOLD_MS = 140;
@@ -47,6 +49,8 @@ const POPUP_LEAD_MS = POPUP_GROW_MS + POPUP_HOLD_MS;
 const DRAG_THRESHOLD_PX = 10;
 // 攻撃結果を表示してから、ボタンを押させずに自動で次のこうげきへ進むまでの間。
 const AUTO_ADVANCE_MS = 1400;
+// 難易度を選んだら、選んだボタンが光ってから自動で問題に移るまでの間。
+const DIFF_PICK_DELAY_MS = 600;
 
 // 「敵は1〜3体同時に出てくることもある」構成。1つの配列=1つの波(wave)。
 // 小単元：雑魚の波(1〜3体・同時)→ボスの波(1体)。章ボス/大ボスは単体の波1つだけ。
@@ -56,7 +60,9 @@ function buildEncounters(params, chapter, gradeData) {
     const subUnit = chapter.subUnits.find((s) => s.id === subUnitId);
     const count = 1 + Math.floor(Math.random() * 3); // 1〜3体が同時に出てくる
     const wave = Array.from({ length: count }, (_, i) => spawnEnemyGroup(subUnit.enemy, i));
-    return [wave, [spawnBoss(subUnit.boss)]];
+    // 中2・中3はgachaRoster側に小単元ごとのボス(unitSmallBoss)がまだ用意されて
+    // いないchapterがある（#todo 追加）。boss不在の小単元は雑魚の波だけで終える。
+    return subUnit.boss ? [wave, [spawnBoss(subUnit.boss)]] : [wave];
   }
   if (kind === "chapterBoss") {
     return [[spawnBoss(chapter.chapterBoss)]];
@@ -99,14 +105,15 @@ export default function Battle({ nav, params }) {
   // 各キャラが「どの敵を狙うか」。ドラッグで上書きするまでは自動割り振り。
   const [targets, setTargets] = useState({});
   const [problem, setProblem] = useState(null);
-  // 問題難易度（簡単/普通/難しい/鬼）。攻撃ボタンを押す前にターンごとに選ぶ。
+  // 問題難易度（簡単/普通/難しい/鬼）。ターンごとに選ぶと、選んだボタンが光ってから自動で問題へ進む。
   const [difficulty, setDifficulty] = useState("standard");
-  const [log, setLog] = useState("");
+  const [pickingDifficulty, setPickingDifficulty] = useState(false);
   const [totals, setTotals] = useState({ exp: 0, coins: 0 });
   const fxRef = useRef(null);
   const [shakingIds, setShakingIds] = useState(() => new Set());
   const [partyShake, setPartyShake] = useState(false);
-  const [lungingId, setLungingId] = useState(null);
+  // 反撃で「予備動作中(下がって構えている)」の敵。複数体が順番に反撃しうるのでSetで管理。
+  const [lungingIds, setLungingIds] = useState(() => new Set());
   // 攻撃中に「枠から飛び出している」キャラをcharacterId->boolで管理。
   const [poppedOut, setPoppedOut] = useState({});
   // ドラッグ中の見た目（指に付いてくる丸アイコン）とホバー中の敵。
@@ -155,9 +162,20 @@ export default function Battle({ nav, params }) {
     return aliveEnemies[fallbackIndex % aliveEnemies.length].instanceId;
   }
 
-  function startQuestion() {
-    setProblem(generateMathLaboProblem(chapterId, difficulty));
+  function startQuestion(diff) {
+    setProblem(generateMathLaboProblem(chapterId, diff, grade));
     setPhase("question");
+  }
+
+  // 難易度ボタンを選んだ瞬間：選んだボタンを光らせ、少し間を置いてからそのまま問題へ。
+  function chooseDifficulty(d) {
+    if (phase !== "choose" || pickingDifficulty) return;
+    setDifficulty(d);
+    setPickingDifficulty(true);
+    setTimeout(() => {
+      setPickingDifficulty(false);
+      startQuestion(d);
+    }, DIFF_PICK_DELAY_MS);
   }
 
   // ドラッグ開始（パーティのポートレートから）。指定キャラを押した瞬間からアイコンが
@@ -231,8 +249,7 @@ export default function Battle({ nav, params }) {
   // 反撃シーケンスを挟んでからダメージを反映する。全滅させた場合は反撃なしで即結果へ。
   function resolveAfterPartyAttack({ missed, hits }) {
     if (missed) {
-      setLog("パーティの攻撃は届かなかった…（不正解）");
-      scheduleEnemyCounter("パーティの攻撃は届かなかった…（不正解）");
+      scheduleEnemyCounter();
       return;
     }
 
@@ -241,7 +258,6 @@ export default function Battle({ nav, params }) {
       damageByTarget[h.targetId] = (damageByTarget[h.targetId] || 0) + h.attack.damage;
     }
 
-    let totalDamage = 0;
     let gainedExp = 0;
     let gainedCoins = 0;
     const defeatedNames = [];
@@ -250,7 +266,6 @@ export default function Battle({ nav, params }) {
     const updatedEnemies = enemies.map((en) => {
       const dmg = damageByTarget[en.instanceId] || 0;
       if (dmg <= 0) return en;
-      totalDamage += dmg;
       hitIds.push(en.instanceId);
       const newHp = Math.max(0, en.hp - dmg);
       if (en.hp > 0 && newHp <= 0) {
@@ -267,51 +282,69 @@ export default function Battle({ nav, params }) {
       setTotals((t) => ({ exp: t.exp + gainedExp, coins: t.coins + gainedCoins }));
     }
 
-    const headline = `${hits
-      .map((h) => `${h.character.name}:${h.attack.damage}${h.attack.isCrit ? "(会心!)" : ""}`)
-      .join(" / ")}\n合計${totalDamage}ダメージ！`;
-
     const allDead = updatedEnemies.every((en) => en.hp <= 0);
     if (allDead) {
-      setLog(`${headline}\n${defeatedNames.join("・")}をたおした！`);
       setPhase("result");
       return;
     }
 
     const survivors = updatedEnemies.filter((en) => en.hp > 0);
-    scheduleEnemyCounter(headline, survivors);
+    scheduleEnemyCounter(survivors);
   }
 
-  // 敵の反撃シーケンス：「攻撃開始音→予備動作→下がる/引っ掻く(＝被弾音)→揺れる」。
-  // 生存者からランダムに1体が反撃する。
-  function scheduleEnemyCounter(headline, survivors) {
+  // 敵の反撃シーケンス：生き残っている敵の数だけ、1体ずつ順番に反撃する
+  // （敵1体なら1回、3体なら3回）。反撃は0.3秒間隔でどんどん来るテンポ。
+  // 「予備動作→引っ掻く」の引っ掻いた瞬間に、被ダメージ数値・HP・パーティの
+  // 揺れを即座に反映する（テキストのログ表示はもう出さない）。
+  // 引っ掻きの向きは4パターン（右上/左上/縦やや右/縦やや左）をシャッフルして
+  // 割り当てるので、同じターンで連続する反撃どうし向きが被らない。
+  function scheduleEnemyCounter(survivors) {
     const pool = survivors && survivors.length ? survivors : enemies.filter((en) => en.hp > 0);
     if (!pool.length) {
-      setLog(headline);
       setPhase("result");
       return;
     }
-    setTimeout(() => {
-      const attacker = pool[Math.floor(Math.random() * pool.length)];
-      setLungingId(attacker.instanceId);
-      playEnemyAttackStartSound(); // kazu制作の実音声（発動効果音）＝敵の攻撃開始の合図
+    const variantOrder = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
+
+    function runAttack(index, hp) {
+      if (index >= pool.length) {
+        setPhase(hp <= 0 ? "defeat" : "result");
+        return;
+      }
+      const attacker = pool[index];
+      const variantIndex = variantOrder[index % variantOrder.length];
+      const leadMs = index === 0 ? COUNTER_LEAD_MS : ENEMY_ATTACK_STEP_MS - ENEMY_STRIKE_WINDUP_MS;
 
       setTimeout(() => {
-        const partyRect = rectOf(partyAreaRef.current, stageRef.current);
-        fxRef.current?.playEnemyCounter({ rect: partyRect }); // 引っ掻き視覚＋被弾音
-        triggerPartyShake(420);
-      }, ENEMY_WINDUP_MS);
+        setLungingIds((prev) => new Set([...prev, attacker.instanceId]));
+        playEnemyAttackStartSound(); // kazu制作の実音声（発動効果音）＝敵の攻撃開始の合図
 
-      setTimeout(() => setLungingId(null), ENEMY_WINDUP_MS + 320);
+        setTimeout(() => {
+          const dmg = resolveEnemyAttack(attacker);
+          const newHp = Math.max(0, hp - dmg);
+          setPartyHp(newHp);
+          const partyRect = rectOf(partyAreaRef.current, stageRef.current);
+          fxRef.current?.playEnemyCounter({ rect: partyRect, variantIndex, damage: dmg }); // 引っ掻き視覚＋被弾数値＋被弾音
+          triggerPartyShake(260);
 
-      setTimeout(() => {
-        const dmg = resolveEnemyAttack(attacker);
-        const newPartyHp = Math.max(0, partyHp - dmg);
-        setPartyHp(newPartyHp);
-        setLog(`${headline}\n${attacker.name} の反撃、${dmg}ダメージ！`);
-        setPhase(newPartyHp <= 0 ? "defeat" : "result");
-      }, ENEMY_WINDUP_MS + COUNTER_FX_MS);
-    }, COUNTER_LEAD_MS);
+          setTimeout(() => {
+            setLungingIds((prev) => {
+              const next = new Set(prev);
+              next.delete(attacker.instanceId);
+              return next;
+            });
+          }, ENEMY_LUNGE_CLEAR_MS);
+
+          if (newHp <= 0) {
+            setPhase("defeat");
+            return;
+          }
+          runAttack(index + 1, newHp);
+        }, ENEMY_STRIKE_WINDUP_MS);
+      }, leadMs);
+    }
+
+    runAttack(0, partyHp);
   }
 
   function pickChoice(index) {
@@ -319,8 +352,13 @@ export default function Battle({ nav, params }) {
     setPhase("resolving");
 
     // 先に正解/不正解の音を聞かせ、その後にエフェクト(たま)を出す。
-    if (correct) playCorrectSound();
-    else playIncorrectSound();
+    // 正解した瞬間は「正解！」の派手な演出をすぐに出す。
+    if (correct) {
+      playCorrectSound();
+      fxRef.current?.playCorrectBurst();
+    } else {
+      playIncorrectSound();
+    }
 
     const stageEl = stageRef.current;
 
@@ -409,14 +447,19 @@ export default function Battle({ nav, params }) {
       setPhase("choose");
       setSkillToggle({});
       setPoppedOut({});
-      setLog("");
       return;
     }
     setPhase("choose");
     setSkillToggle({});
     setPoppedOut({});
-    setLog("");
   }
+
+  // 戦闘開始時に一度だけ「START!」を出す。BattleFXの初期化(子のuseEffect)は
+  // このuseEffectより先に走るので、マウント直後でもfxRef.currentは使える。
+  useEffect(() => {
+    fxRef.current?.playStartBanner();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 攻撃結果(result)は「つぎへ」ボタンを押させず、少し見せてから自動で次のこうげきへ。
   useEffect(() => {
@@ -473,7 +516,7 @@ export default function Battle({ nav, params }) {
                 <div
                   key={en.instanceId}
                   className={`mw-enemy-slot ${shakingIds.has(en.instanceId) ? "mw-shake" : ""} ${
-                    lungingId === en.instanceId ? "mw-lunge" : ""
+                    lungingIds.has(en.instanceId) ? "mw-lunge" : ""
                   } ${defeated ? "mw-enemy-defeated" : ""} ${
                     hoverTargetId === en.instanceId ? "mw-enemy-drop-hover" : ""
                   }`}
@@ -576,17 +619,17 @@ export default function Battle({ nav, params }) {
             {DIFFICULTY_KEYS.map((d) => (
               <button
                 key={d}
-                className={`mw-diff-btn ${difficulty === d ? "selected" : ""}`}
-                onClick={() => setDifficulty(d)}
+                className={`mw-diff-btn ${difficulty === d ? "selected" : ""} ${
+                  pickingDifficulty && difficulty === d ? "picked" : ""
+                }`}
+                disabled={pickingDifficulty}
+                onClick={() => chooseDifficulty(d)}
               >
                 {DIFFICULTY_LABEL[d]}
                 <span className="mw-diff-mult">×{DIFFICULTY_DAMAGE_MULTIPLIER[d]}</span>
               </button>
             ))}
           </div>
-          <button className="mw-btn primary" onClick={startQuestion}>
-            こうげき！
-          </button>
         </div>
       )}
 
@@ -606,14 +649,6 @@ export default function Battle({ nav, params }) {
       {phase === "resolving" && (
         <div className="mw-panel mw-center" style={{ minHeight: 60 }}>
           <div className="mw-sub">…</div>
-        </div>
-      )}
-
-      {phase === "result" && (
-        <div className="mw-panel">
-          <div className="mw-log" style={{ whiteSpace: "pre-line" }}>
-            {log}
-          </div>
         </div>
       )}
 
