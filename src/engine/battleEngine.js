@@ -64,9 +64,15 @@ export function resolveEnemyAttack(enemy) {
 // 数値はレベルMAX(上限)到達時を基準に置いていたため、レベル1の初期パーティには
 // 章の後半のつもりの強さで襲いかかってきてしまっていた。章が進むほど「本来の
 // 強さ」に近づくよう、早い章の敵だけ大きく弱くする（＝最初はちゃんと倒せる）。
+// 【2026-09-17時点でも「敵のATK」だけはこの単純な式のまま】：敵から受けるダメージは
+// PARTY_MAX_HP(1000固定)に対する割合で決まるべきもので、下のhpScaleのように
+// 章が進むごとに何十倍にもしてしまうと即死する。ATKの再調整は今回のスコープ外。
 function earlyGameScale(baseEnemy) {
-  const chapterNum = baseEnemy.chapterId ? parseInt(baseEnemy.chapterId.replace("c", ""), 10) : null;
-  if (!chapterNum) return 1; // 大ボス等、章に属さないものはそのまま
+  // 中1(c1〜c7)だけを対象にした式（元々の設計のまま）。中2・中3(g2c*/g3c*)や
+  // 大ボス等(chapterIdなし)は対象外＝フルパワー(1)を返す。
+  const m = baseEnemy.chapterId ? /^c(\d+)$/.exec(baseEnemy.chapterId) : null;
+  if (!m) return 1;
+  const chapterNum = parseInt(m[1], 10);
   if (chapterNum <= 1) return 0.4;
   if (chapterNum === 2) return 0.6;
   if (chapterNum === 3) return 0.75;
@@ -74,25 +80,90 @@ function earlyGameScale(baseEnemy) {
   return 1;
 }
 
+// ============================================================
+// 2026-09-17：「敵の強さのバランスを取りたい」への対応（HPのみ）。
+//
+// kazu指定の3つのベンチマーク（すべて「普通」難易度、パーティ5体、対象は
+// 単体の敵1体に全火力が入る前提）から、敵HPの章ごとのスケールを逆算した：
+//   ①最初の頃(中1第1章・スターター3体Lv1)   ：雑魚=3回で撃破、ボス=5回で撃破
+//   ②計算の単元の最後(中1第2章・R個体値MAX5体)：雑魚=4回で撃破、ボス=10回で撃破
+//   ③中1第7章の章ボス(SR個体値MAX5体)         ：雑魚=5回で撃破、ボス=20回で撃破
+//
+// battleEngine.js内のクリティカル式で1ラウンド(全員1回ずつ攻撃)の期待ダメージ合計を
+// 計算し、「期待ダメージ×狙った撃破回数＝目標HP」から、gachaRoster.jsの生HP値に
+// 対する倍率(スケール)を3点(章1・章2・章7)で算出。①→②の間はレア度も1個体しか
+// 上がらないのに全体火力が約26倍に跳ね上がる（Lv1→Lv40のレベル差・N→Rのレア度差・
+// 専門化されたP値によるクリ率/クリ倍率の複利的な伸びが重なるため）ので、章1→章2は
+// そのまま実測値を採用し、章2→章7の5ステップ分だけ等比数列でなめらかに補間した
+// （雑魚は1章あたり×1.10、章ボスは×1.245、小ボスは×1.21）。中2・中3は明示的な
+// ベンチマークが無いため、この等比成長をそのまま延長してある（#todo 中2・3は
+// 実測して調整）。算出の詳細は /private/tmp配下のスクラッチパッドのbalance_fit.mjs
+// を参照（このコミット時点のセッションのスクラッチパッドなので後から追えない点に注意）。
+// ============================================================
+
+// c1〜c7→1〜7、g2c1〜g2c6→8〜13、g3c1〜g3c8→14〜21 の通し位置に変換。
+// 章にひもづかない(finalBoss等)場合はnullを返す。
+function chapterPosition(chapterId) {
+  if (!chapterId) return null;
+  let m = /^c(\d+)$/.exec(chapterId);
+  if (m) return parseInt(m[1], 10);
+  m = /^g2c(\d+)$/.exec(chapterId);
+  if (m) return 7 + parseInt(m[1], 10);
+  m = /^g3c(\d+)$/.exec(chapterId);
+  if (m) return 13 + parseInt(m[1], 10);
+  return null;
+}
+// 学年ごとの最終位置（finalBossの位置算出に使う）。
+const GRADE_LAST_POSITION = { 1: 7, 2: 13, 3: 21 };
+
+// pos<=1は実測値そのまま、pos>=2は章2の実測値を起点に等比成長でなめらかに繋ぐ。
+function scaleCurve(scaleAt1, scaleAt2, growthRate) {
+  return (pos) => (pos <= 1 ? scaleAt1 : scaleAt2 * Math.pow(growthRate, pos - 2));
+}
+const mobHpScaleCurve = scaleCurve(0.766, 27.58, 1.1035);
+const smallBossHpScaleCurve = scaleCurve(0.728, 31.17, 1.2105);
+const chapterBossHpScaleCurve = scaleCurve(0.825, 42.96, 1.245);
+// 大ボス(kind="unitBoss"、現状バトルには未登場)は章ボスよりさらに一段強い、の目安。
+const UNIT_BOSS_HP_MULT = 1.15;
+// 学年の最終ボス(数学の魔王等)は、その学年最終章の章ボスよりさらに一段強い、の目安。
+const FINAL_BOSS_HP_MULT = 1.3;
+
+/** そのgachaRosterエンティティのHPに掛けるスケール（kindで雑魚/小ボス/章ボス等を判定）。 */
+function hpScaleFor(entry) {
+  if (entry.kind === "finalBoss") {
+    const lastPos = GRADE_LAST_POSITION[entry.grade] ?? 21;
+    return chapterBossHpScaleCurve(lastPos) * FINAL_BOSS_HP_MULT;
+  }
+  const pos = chapterPosition(entry.chapterId);
+  if (pos == null) return 1; // secretBoss等、章にひもづかないものは現状維持
+  if (entry.kind === "unitSmallBoss") return smallBossHpScaleCurve(pos);
+  if (entry.kind === "unitBoss") return chapterBossHpScaleCurve(pos) * UNIT_BOSS_HP_MULT;
+  if (entry.kind === "chapterBoss") return chapterBossHpScaleCurve(pos);
+  return mobHpScaleCurve(pos); // kind === "unit"（雑魚）
+}
+
 /** グループ内の敵インスタンスを作る（1〜3組の雑魚は同一キャラを使い回す）。 */
 export function spawnEnemyGroup(baseEnemy, groupIndex) {
-  const scale = (1 + groupIndex * 0.08) * earlyGameScale(baseEnemy); // 後の組ほど少しだけ硬くする
+  const groupBonus = 1 + groupIndex * 0.08; // 後の組ほど少しだけ硬くする
+  const hpScale = hpScaleFor(baseEnemy) * groupBonus;
+  const atkScale = earlyGameScale(baseEnemy) * groupBonus;
   return {
     ...baseEnemy,
     instanceId: `${baseEnemy.id}_g${groupIndex}`,
-    hp: Math.round(baseEnemy.hp * scale),
-    maxHp: Math.round(baseEnemy.hp * scale),
-    atk: Math.round(baseEnemy.atk * scale),
+    hp: Math.round(baseEnemy.hp * hpScale),
+    maxHp: Math.round(baseEnemy.hp * hpScale),
+    atk: Math.round(baseEnemy.atk * atkScale),
   };
 }
 
 export function spawnBoss(bossEntry) {
-  const scale = earlyGameScale(bossEntry);
+  const hpScale = hpScaleFor(bossEntry);
+  const atkScale = earlyGameScale(bossEntry);
   return {
     ...bossEntry,
     instanceId: `${bossEntry.id}_boss`,
-    hp: Math.round(bossEntry.hp * scale),
-    maxHp: Math.round(bossEntry.hp * scale),
-    atk: Math.round(bossEntry.atk * scale),
+    hp: Math.round(bossEntry.hp * hpScale),
+    maxHp: Math.round(bossEntry.hp * hpScale),
+    atk: Math.round(bossEntry.atk * atkScale),
   };
 }
