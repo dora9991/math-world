@@ -413,8 +413,9 @@ body {
 
 .mw-party-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  /* 2026-09-17：パーティ3→5体化。5列に増やす。 */
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
 }
 
 .mw-party-row .mw-portrait-frame {

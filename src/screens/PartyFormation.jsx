@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { useGame } from "../context/GameContext.jsx";
+import { useGame, PARTY_SIZE } from "../context/GameContext.jsx";
 import { SUBJECT_LABEL } from "../data/storyMap.js";
 import { expProgress } from "../engine/expCurve.js";
 import MonsterPortrait from "../components/MonsterPortrait.jsx";
+
+const PARTY_SLOTS = Array.from({ length: PARTY_SIZE }, (_, i) => i);
 
 const SUBJECT_COLOR = {
   calc: "var(--calc)",
@@ -53,7 +55,7 @@ export default function PartyFormation({ nav }) {
 
       <div className="mw-fantasy-panel">
         <div className="mw-party-row" style={{ marginBottom: 12 }}>
-          {[0, 1, 2].map((slot) => {
+          {PARTY_SLOTS.map((slot) => {
             const c = save.party[slot] ? charactersById[save.party[slot]] : null;
             return (
               <button key={slot} className="mw-portrait-btn" onClick={() => setPickingSlot(slot)}>
@@ -62,7 +64,7 @@ export default function PartyFormation({ nav }) {
             );
           })}
         </div>
-        {[0, 1, 2].map((slot) => {
+        {PARTY_SLOTS.map((slot) => {
           const c = save.party[slot] ? charactersById[save.party[slot]] : null;
           return (
             <div key={slot} className="mw-fantasy-item" style={{ cursor: "default" }}>

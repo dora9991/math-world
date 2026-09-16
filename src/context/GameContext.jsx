@@ -6,28 +6,44 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { GACHA_ROSTER } from "../data/gachaRoster.js";
+import { SPECIALIST_ROSTER } from "../data/specialistRoster.js";
 
 const SAVE_KEY = "math-world-save-v1";
 
 const STARTER_IDS = ["sample_intro", "m_c1_u1", "m_c1_u2"];
+// 2026-09-17：パーティを3→5体に拡張。仲間の合計数（PartyFormation.jsx等と共有）。
+export const PARTY_SIZE = 5;
+// 単元特化キャラ(specialistRoster.js)は今回「ゲーム性に特化」の検証用に、
+// ガチャを挟まず最初から全員仲間になっている（#todo 将来ガチャ経由の入手にするか検討）。
+const SPECIALIST_IDS = SPECIALIST_ROSTER.map((c) => c.id);
 
 function loadSave() {
+  let save = null;
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) save = JSON.parse(raw);
   } catch (e) {
     console.warn("セーブデータの読み込みに失敗:", e);
   }
-  const owned = {};
-  for (const id of STARTER_IDS) owned[id] = { exp: 0 };
-  return {
-    coins: 300,
-    owned,
-    party: [STARTER_IDS[0], STARTER_IDS[1], STARTER_IDS[2]],
-    clearedSubUnits: {},
-    clearedChapters: {},
-    clearedFinalBoss: {},
-  };
+  if (!save) {
+    const owned = {};
+    for (const id of STARTER_IDS) owned[id] = { exp: 0 };
+    save = {
+      coins: 300,
+      owned,
+      party: [STARTER_IDS[0], STARTER_IDS[1], STARTER_IDS[2], null, null],
+      clearedSubUnits: {},
+      clearedChapters: {},
+      clearedFinalBoss: {},
+    };
+  }
+  // 既存セーブにも単元特化キャラを後付けで全員仲間入りさせる（自己修復マージ）。
+  for (const id of SPECIALIST_IDS) {
+    if (!save.owned[id]) save.owned[id] = { exp: 0 };
+  }
+  // パーティ配列がPARTY_SIZEより短い古いセーブは空き枠で埋める。
+  while (save.party.length < PARTY_SIZE) save.party.push(null);
+  return save;
 }
 
 const GameContext = createContext(null);
@@ -46,6 +62,9 @@ export function GameProvider({ children }) {
   const charactersById = useMemo(() => {
     const map = {};
     for (const c of GACHA_ROSTER) map[c.id] = c;
+    // specialistRoster.jsはgrade/chapterIdを持たないのでSTORY_MAP(gachaRoster.js)には
+    // 混ぜず、キャラ検索用のこのmapにだけ追加する。
+    for (const c of SPECIALIST_ROSTER) map[c.id] = c;
     return map;
   }, []);
 
