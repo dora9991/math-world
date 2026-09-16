@@ -86,6 +86,10 @@ export function GameProvider({ children }) {
       addCoins(amount) {
         setSave((s) => ({ ...s, coins: s.coins + amount }));
       },
+      // 2026-09-17：管理モード用。コインを直接指定の値に上書きする。
+      setCoins(amount) {
+        setSave((s) => ({ ...s, coins: Math.max(0, Math.round(amount)) }));
+      },
       spendCoins(amount) {
         let ok = false;
         setSave((s) => {
@@ -106,6 +110,20 @@ export function GameProvider({ children }) {
             owned: {
               ...s.owned,
               [characterId]: { ...prev, exp: prev.exp + amount },
+            },
+          };
+        });
+      },
+      // 2026-09-17：管理モード用。そのキャラの累計EXPを直接指定の値に上書きする
+      // （＝addExpの「増やす」ではなく「その値にする」）。
+      setExp(characterId, amount) {
+        setSave((s) => {
+          const prev = s.owned[characterId] || { exp: 0 };
+          return {
+            ...s,
+            owned: {
+              ...s.owned,
+              [characterId]: { ...prev, exp: Math.max(0, Math.round(amount)) },
             },
           };
         });

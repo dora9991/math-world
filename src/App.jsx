@@ -16,6 +16,7 @@ import Dex from "./screens/Dex.jsx";
 import LearningModeStub from "./screens/LearningModeStub.jsx";
 import TagQuestStub from "./screens/TagQuestStub.jsx";
 import Settings from "./screens/Settings.jsx";
+import Admin from "./screens/Admin.jsx";
 
 const SCREENS = {
   opening: Opening,
@@ -33,6 +34,7 @@ const SCREENS = {
   learning: LearningModeStub,
   tagquest: TagQuestStub,
   settings: Settings,
+  admin: Admin,
 };
 
 // ホワイトアウトの時間（フェードイン→裏で画面切替→フェードアウト）

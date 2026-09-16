@@ -1200,3 +1200,16 @@ body {
     text-shadow: 0 0 16px #ff9ecb;
   }
 }
+
+/* ---- 管理モード(Admin.jsx)の数値入力。2026-09-17追加 ---- */
+.mw-admin-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel-2);
+  border: 2px solid #3a3f6b;
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+}

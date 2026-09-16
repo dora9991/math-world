@@ -25,6 +25,13 @@ export function levelFromExp(totalExp, rarity) {
   return level;
 }
 
+/** 指定レベルに到達するのに必要な累計EXP（管理モードの「レベルを指定」用）。 */
+export function expForLevel(targetLevel) {
+  let total = 0;
+  for (let lv = 1; lv < targetLevel; lv++) total += expToNext(lv);
+  return total;
+}
+
 export function expProgress(totalExp, rarity) {
   const level = levelFromExp(totalExp, rarity);
   const cap = getLevelCap(rarity);

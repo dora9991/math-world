@@ -1,4 +1,5 @@
 import { useGame } from "../context/GameContext.jsx";
+import { useSecretTap } from "../hooks/useSecretTap.js";
 
 const ITEMS = [
   { key: "storyGradeMap", icon: "📖", label: "ストーリー" },
@@ -11,10 +12,16 @@ const ITEMS = [
 
 export default function Menu({ nav }) {
   const { save } = useGame();
+  // 「math world」の文字を5回連続タップすると管理モードへ（隠しコマンド）。
+  const handleTitleTap = useSecretTap(5, () => nav.go("admin"));
   return (
     <div className="mw-fantasy-screen">
       <div className="mw-fantasy-topbar">
-        <span className="mw-fantasy-title" style={{ fontSize: "1.3rem" }}>
+        <span
+          className="mw-fantasy-title"
+          style={{ fontSize: "1.3rem", cursor: "pointer" }}
+          onClick={handleTitleTap}
+        >
           math world
         </span>
         <span className="mw-fantasy-coin">🪙 {save.coins}</span>
