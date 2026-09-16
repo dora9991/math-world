@@ -10,7 +10,15 @@ import { SPECIALIST_ROSTER } from "../data/specialistRoster.js";
 
 const SAVE_KEY = "math-world-save-v1";
 
+// 数学ラボ風の駄洒落モンスター（旧デフォルト）。2026-09-17時点でも所持リストには
+// 残すが、パーティの初期メンバーとしてはもう使わない（#todo 完全に不要なら整理）。
 const STARTER_IDS = ["sample_intro", "m_c1_u1", "m_c1_u2"];
+// 2026-09-17（4回目）：「キャラ編成をし直してほしい」への対応。初期パーティを
+// 単元特化ロースター(specialistRoster.js)から、5科目のN(全体ダメージ系統)を
+// 1体ずつにした。旧デフォルト([STARTER_IDS,null,null])のまま変化していない
+// セーブは、下のloadSave()内で一度だけこちらに移行する。
+const DEFAULT_PARTY_IDS = ["sp_calc_a_n", "sp_eq_a_n", "sp_func_a_n", "sp_geo_a_n", "sp_data_a_n"];
+const OLD_DEFAULT_PARTY = [STARTER_IDS[0], STARTER_IDS[1], STARTER_IDS[2], null, null];
 // 2026-09-17：パーティを3→5体に拡張。仲間の合計数（PartyFormation.jsx等と共有）。
 export const PARTY_SIZE = 5;
 // 単元特化キャラ(specialistRoster.js)は今回「ゲーム性に特化」の検証用に、
@@ -31,7 +39,7 @@ function loadSave() {
     save = {
       coins: 300,
       owned,
-      party: [STARTER_IDS[0], STARTER_IDS[1], STARTER_IDS[2], null, null],
+      party: [...DEFAULT_PARTY_IDS],
       clearedSubUnits: {},
       clearedChapters: {},
       clearedFinalBoss: {},
@@ -43,6 +51,11 @@ function loadSave() {
   }
   // パーティ配列がPARTY_SIZEより短い古いセーブは空き枠で埋める。
   while (save.party.length < PARTY_SIZE) save.party.push(null);
+  // 旧デフォルト(数学ラボ風キャラ3体+空き2枠)のまま一度も編成し直していない
+  // セーブだけ、新しいデフォルトパーティへ一度だけ移行する。
+  if (JSON.stringify(save.party) === JSON.stringify(OLD_DEFAULT_PARTY)) {
+    save = { ...save, party: [...DEFAULT_PARTY_IDS] };
+  }
   return save;
 }
 

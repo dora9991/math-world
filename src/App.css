@@ -793,3 +793,53 @@ body {
   opacity: 0.75;
   font-weight: 600;
 }
+
+/* ---- 図鑑(Dex.jsx)。2026-09-17追加 ---- */
+.mw-dex-card {
+  margin-bottom: 10px;
+}
+
+.mw-dex-skill {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.mw-dex-skill-icon {
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.mw-dex-resist-title {
+  font-size: 0.72rem;
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+
+.mw-dex-resist-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+}
+
+.mw-dex-resist-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 2px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 0.7rem;
+}
+
+.mw-dex-resist-label {
+  opacity: 0.7;
+}
+
+.mw-dex-resist-value {
+  font-weight: 800;
+}

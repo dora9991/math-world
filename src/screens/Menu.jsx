@@ -4,6 +4,7 @@ const ITEMS = [
   { key: "storyGradeMap", icon: "📖", label: "ストーリー" },
   { key: "learning", icon: "📝", label: "学習モード" },
   { key: "party", icon: "🧑‍🤝‍🧑", label: "パーティ編成" },
+  { key: "dex", icon: "📚", label: "図鑑" },
   { key: "tagquest", icon: "🤝", label: "タッグクエスト" },
   { key: "settings", icon: "⚙️", label: "設定" },
 ];

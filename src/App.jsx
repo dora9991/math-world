@@ -12,6 +12,7 @@ import Battle from "./screens/Battle.jsx";
 import Reward from "./screens/Reward.jsx";
 import GachaScreen from "./screens/GachaScreen.jsx";
 import PartyFormation from "./screens/PartyFormation.jsx";
+import Dex from "./screens/Dex.jsx";
 import LearningModeStub from "./screens/LearningModeStub.jsx";
 import TagQuestStub from "./screens/TagQuestStub.jsx";
 import Settings from "./screens/Settings.jsx";
@@ -28,6 +29,7 @@ const SCREENS = {
   reward: Reward,
   gacha: GachaScreen,
   party: PartyFormation,
+  dex: Dex,
   learning: LearningModeStub,
   tagquest: TagQuestStub,
   settings: Settings,
