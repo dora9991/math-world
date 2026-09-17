@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { GameProvider } from "./context/GameContext.jsx";
+import { playUiTapSound } from "./fx/sound.js";
 
 import Opening from "./screens/Opening.jsx";
 import Title from "./screens/Title.jsx";
@@ -44,9 +45,16 @@ const FLASH_SETTLE_MS = 60;
 function useNav(initial) {
   const [stack, setStack] = useState([initial]);
   const [flashOpacity, setFlashOpacity] = useState(0);
+  // 2026-09-18：「操作性・楽しさ」の検証で、戦闘以外の画面遷移が全部
+  // 瞬間切り替え（無音・無演出）で、アプリというよりただのページ切り替えに
+  // 見えることが分かった。navKeyを画面遷移のたびに更新し、App側で
+  // それをkeyにして毎回フェードイン(.mw-screen-enter)させる。
+  const [navKey, setNavKey] = useState(0);
   const current = stack[stack.length - 1];
 
   function go(screen, params = {}, { replace = false } = {}) {
+    playUiTapSound();
+    setNavKey((k) => k + 1);
     setStack((s) => {
       const next = replace ? s.slice(0, -1) : s;
       return [...next, { screen, params }];
@@ -54,10 +62,13 @@ function useNav(initial) {
   }
 
   function back() {
+    playUiTapSound();
+    setNavKey((k) => k + 1);
     setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
   }
 
   function resetTo(screen, params = {}) {
+    setNavKey((k) => k + 1);
     setStack([{ screen, params }]);
   }
 
@@ -70,7 +81,7 @@ function useNav(initial) {
     }, FLASH_IN_MS);
   }
 
-  return { ...current, go, back, resetTo, flashTo, flashOpacity };
+  return { ...current, go, back, resetTo, flashTo, flashOpacity, navKey };
 }
 
 export default function App() {
@@ -80,7 +91,9 @@ export default function App() {
   return (
     <GameProvider>
       <div className="mw-app">
-        <Screen params={nav.params} nav={nav} />
+        <div key={nav.navKey} className="mw-screen-enter">
+          <Screen params={nav.params} nav={nav} />
+        </div>
         <div
           className="mw-whiteout"
           style={{

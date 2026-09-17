@@ -44,6 +44,28 @@ body {
   padding: 16px;
 }
 
+/* 2026-09-18：画面遷移のたびに（keyの変化でDOMごと作り直されて）フェードインする。
+   以前は戦闘に入る瞬間だけ白フラッシュがあり、それ以外の全ての画面遷移が
+   完全な瞬間切り替えだった（「ゲームっぽくない」の主要因の1つ）。 */
+.mw-screen-enter {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: mw-screen-fade-in 0.22s ease-out;
+}
+
+@keyframes mw-screen-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .mw-screen {
   width: 100%;
   max-width: 480px;
@@ -60,6 +82,28 @@ body {
   justify-content: center;
   text-align: center;
   gap: 20px;
+}
+
+/* 勝利画面の各行が少し間を置いてポンと弾んで出てくる（2026-09-18追加）。
+   animation-delayはインラインstyleで行ごとにずらす。 */
+.mw-reward-pop {
+  opacity: 0;
+  animation: mw-reward-pop-in 0.4s cubic-bezier(0.2, 1.6, 0.4, 1) forwards;
+}
+
+@keyframes mw-reward-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) translateY(10px);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.08) translateY(0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .mw-title {
@@ -271,6 +315,13 @@ body {
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+
+/* 2026-09-18：一番よく押すボタン(答えの選択肢)なのに押した手応えが無かった。 */
+.mw-choice:active {
+  transform: scale(0.95);
+  background: #3a3f6b;
 }
 
 .mw-choice.correct {
@@ -787,7 +838,14 @@ body {
   cursor: pointer;
   text-align: left;
   width: 100%;
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.08s ease;
+}
+
+/* 2026-09-18：タップした瞬間に少し沈む手応え（今までhover/focusしか無く、
+   タッチ操作だとボタンを押した実感が全く無かった）。 */
+.mw-fantasy-item:active {
+  transform: scale(0.96);
+  background: linear-gradient(180deg, #4a3420 0%, #2c2010 100%);
 }
 
 .mw-fantasy-icon {
@@ -852,6 +910,11 @@ body {
   font-weight: 800;
   font-size: 0.85rem;
   cursor: pointer;
+  transition: transform 0.08s ease;
+}
+
+.mw-fantasy-back:active {
+  transform: scale(0.93);
 }
 
 .mw-fantasy-back:hover,
@@ -911,6 +974,11 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  transition: transform 0.08s ease;
+}
+
+.mw-diff-btn:active {
+  transform: scale(0.94);
 }
 
 .mw-diff-btn.selected {

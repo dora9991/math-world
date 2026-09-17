@@ -149,6 +149,15 @@ function noiseBurst(audioCtx, { duration = 0.15, gain = 0.4, filterFreq = 1200, 
   src.stop(t0 + duration + 0.02);
 }
 
+// 2026-09-18：「操作性・楽しさ」の検証で、戦闘の外（メニュー/画面遷移）が
+// 完全に無音でタップの手応えが無いことが分かった。短い「コッ」という
+// 合成音を画面遷移のたびに鳴らして、ボタンを押した実感を出す。
+export function playUiTapSound() {
+  const c = getCtx();
+  if (!c) return;
+  tone(c, { freq: 520, endFreq: 380, type: "sine", duration: 0.06, gain: 0.22 });
+}
+
 /** 正解：明るい上昇2音（ピンポン）。 */
 export function playCorrectSound() {
   const c = getCtx();
