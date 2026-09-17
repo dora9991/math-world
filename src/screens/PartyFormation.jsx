@@ -1,19 +1,36 @@
 // ============================================================
 // PartyFormation.jsx — パーティ編成画面。
 // 2026-09-17：「変更」ボタンの一覧をやめ、ドラッグ＆ドロップでの入れ替えに変更。
-//   ・上段：パーティ5枠（絵＋名前、半分サイズ）
+//   ・上段：パーティ5枠（絵のみ、半分サイズ）
 //   ・下段：ガチャで手に入れた全キャラを絵柄だけで並べたグリッド（控え）
 //   ・控え→パーティ枠へドラッグ＝そのキャラを編成する
 //   ・パーティ枠→下の控えエリアへドラッグ＝パーティから外す
 //   ・動かさずタップ＝そのキャラの強さのポップアップを表示
+// 2026-09-18：パーティ枠も名前表示を外し、控えメンバーと同じ絵柄のみの
+//   表記に統一。控えメンバーにレベル順/レア度順/新しい順/古い順のソートを追加。
 // ============================================================
 import { useRef, useState } from "react";
 import { useGame, PARTY_SIZE } from "../context/GameContext.jsx";
+import { levelFromExp } from "../engine/expCurve.js";
 import MonsterPortrait from "../components/MonsterPortrait.jsx";
 import CharacterPopup from "../components/CharacterPopup.jsx";
 
 const PARTY_SLOTS = Array.from({ length: PARTY_SIZE }, (_, i) => i);
 const DRAG_THRESHOLD_PX = 10;
+
+const RARITY_RANK = { N: 0, R: 1, SR: 2, UR: 3 };
+
+// 「新しい順/古い順」は取得日時を別途保持していないため、save.owned
+// （オブジェクト）のキー挿入順＝仲間になった順をそのまま使う（新しく
+// ガチャで仲間になったキャラはobtainCharacterで末尾に追加されるので、
+// 実際の並びとして成立する。最初から全員仲間の単元特化ロースターは
+// specialistRoster.jsの並び順のまま一括追加されている点に注意）。
+const SORT_OPTIONS = [
+  { key: "levelDesc", label: "レベル順" },
+  { key: "rarityDesc", label: "レア度順" },
+  { key: "newest", label: "新しい順" },
+  { key: "oldest", label: "古い順" },
+];
 
 export default function PartyFormation({ nav }) {
   const { save, actions, charactersById } = useGame();
@@ -21,6 +38,7 @@ export default function PartyFormation({ nav }) {
   const [dragGhost, setDragGhost] = useState(null); // {charId, x, y} | null
   const [hoverSlot, setHoverSlot] = useState(null); // 控え→パーティへドラッグ中、指の下にある枠
   const [benchHover, setBenchHover] = useState(false); // パーティ→控えへドラッグ中、控えエリアの上にいるか
+  const [sortKey, setSortKey] = useState("oldest");
 
   // pointermove/pointerupはドラッグ中ずっと同じリスナーを使い回すので、
   // 判定にReactのstateをそのまま読むと古い値を掴んでしまう（Battle.jsxの
@@ -31,9 +49,27 @@ export default function PartyFormation({ nav }) {
   const slotRefs = useRef({}); // slot index -> el
   const benchAreaRef = useRef(null);
 
-  const ownedList = Object.keys(save.owned)
+  // 挿入順(=仲間になった順)のリストをまず作り、古い順/新しい順はこれをそのまま
+  // 使う。レベル順/レア度順はこの上で安定ソートする。
+  const ownedByAcquireOrder = Object.keys(save.owned)
     .map((id) => charactersById[id])
     .filter(Boolean);
+
+  const ownedList = (() => {
+    switch (sortKey) {
+      case "newest":
+        return [...ownedByAcquireOrder].reverse();
+      case "levelDesc":
+        return [...ownedByAcquireOrder].sort(
+          (a, b) => levelFromExp(save.owned[b.id]?.exp || 0, b.rarity) - levelFromExp(save.owned[a.id]?.exp || 0, a.rarity)
+        );
+      case "rarityDesc":
+        return [...ownedByAcquireOrder].sort((a, b) => RARITY_RANK[b.rarity] - RARITY_RANK[a.rarity]);
+      case "oldest":
+      default:
+        return ownedByAcquireOrder;
+    }
+  })();
 
   function startDrag(e, origin, charId, slotIndex) {
     e.preventDefault();
@@ -138,7 +174,7 @@ export default function PartyFormation({ nav }) {
                 }}
                 onPointerDown={(e) => c && startDrag(e, "party", c.id, slot)}
               >
-                <MonsterPortrait character={c} size="small" footer={c ? c.name : "（空き枠）"} />
+                <MonsterPortrait character={c} size="small" />
               </button>
             );
           })}
@@ -147,6 +183,17 @@ export default function PartyFormation({ nav }) {
 
       <div className={`mw-fantasy-panel ${benchHover ? "mw-bench-drop-hover" : ""}`} ref={benchAreaRef}>
         <div className="mw-bench-title">控えメンバー（タップで詳細／ドラッグで上のパーティ枠へ）</div>
+        <div className="mw-diff-row" style={{ marginBottom: 10 }}>
+          {SORT_OPTIONS.map((opt) => (
+            <button
+              key={opt.key}
+              className={`mw-diff-btn ${sortKey === opt.key ? "selected" : ""}`}
+              onClick={() => setSortKey(opt.key)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
         <div className="mw-bench-grid">
           {ownedList.map((c) => (
             <button key={c.id} className="mw-portrait-btn mw-bench-item" onPointerDown={(e) => startDrag(e, "bench", c.id, null)}>
