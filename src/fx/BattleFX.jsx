@@ -362,6 +362,66 @@ function flashScreen(app, color = 0xffffff, peak = 0.8) {
   });
 }
 
+// 2026-09-18：スキル即時発動（ダメージ以外＝バフ/回復/状態異常回復）用の汎用エフェクト。
+// 任意の色で「ふわっと上に舞う光の粒」を出す（spawnBurstの単色・控えめ版）。
+function spawnColorBurst(app, { x, y, color = 0xffffff, count = 16 }) {
+  const particles = [];
+  for (let i = 0; i < count; i++) {
+    const size = 10 + Math.random() * 10;
+    const p = new PIXI.Sprite(makeGlowTexture(color, 96));
+    p.anchor.set(0.5);
+    p.width = p.height = size;
+    p.x = x;
+    p.y = y;
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2.5 + Math.random() * 3.5;
+    p.vx = Math.cos(angle) * speed;
+    p.vy = Math.sin(angle) * speed - 1.6; // 上向きに少し浮く
+    p.life = 1;
+    p.__size = size;
+    p.blendMode = PIXI.BLEND_MODES.ADD;
+    app.stage.addChild(p);
+    particles.push(p);
+  }
+  addTicked(app, particles, (p, delta) => {
+    p.life -= 0.026 * delta;
+    p.x += p.vx * delta;
+    p.y += p.vy * delta;
+    p.vy += 0.04 * delta;
+    p.width = p.height = Math.max(0.05, p.life) * p.__size;
+    p.alpha = Math.max(0, p.life);
+  });
+}
+
+// 任意テキスト＋色の「ふわっと浮いて消える」ラベル（スキル名/回復量/バフ内容などに使う）。
+function spawnFloatingLabel(app, { text, x, y, color = 0xffffff, fontSize = 26 }) {
+  const style = new PIXI.TextStyle({
+    fontFamily: "system-ui, sans-serif",
+    fontSize,
+    fontWeight: "800",
+    fill: color,
+    stroke: 0x14172b,
+    strokeThickness: 6,
+  });
+  const label = new PIXI.Text(text, style);
+  label.anchor.set(0.5);
+  const margin = 20;
+  label.x = Math.min(app.screen.width - margin, Math.max(margin, x));
+  label.y = y;
+  label.scale.set(0.3);
+  label.life = 1;
+  label.__t = 0;
+  app.stage.addChild(label);
+  addTicked(app, [label], (node, delta) => {
+    node.__t += delta;
+    const growPhase = Math.min(1, node.__t / 6);
+    node.scale.set(0.3 + growPhase * 0.8);
+    node.y -= 0.35 * delta;
+    if (node.__t > 26) node.alpha = Math.max(0, 1 - (node.__t - 26) / 16);
+    node.life = node.__t > 42 ? 0 : 1;
+  });
+}
+
 function spawnMissPuff(app, x, y) {
   const px = x ?? app.screen.width / 2;
   const py = y ?? app.screen.height / 2;
@@ -682,6 +742,19 @@ const BattleFX = forwardRef(function BattleFX(_props, ref) {
         const cy = rect ? rect.y + rect.height / 2 : app.screen.height / 2;
         spawnCounterDamageText(app, damage, cx + (Math.random() * 40 - 20), cy - 50);
       }
+    },
+    // 2026-09-18追加：スキル即時発動のうち、ダメージ以外（バフ/回復/状態異常回復）の
+    // エフェクト。rect（パーティ表示エリア）の中心に色付きの光の粒＋テキストを出し、
+    // 画面全体もその色でうっすらフラッシュさせる。
+    playPartySkillFx({ rect, text, color = 0xffffff }) {
+      const app = appRef.current;
+      if (!app) return;
+      const cx = rect ? rect.x + rect.width / 2 : app.screen.width / 2;
+      const cy = rect ? rect.y + rect.height / 2 : app.screen.height / 2;
+      spawnColorBurst(app, { x: cx, y: cy, color });
+      if (text) spawnFloatingLabel(app, { text, x: cx, y: cy - 30, color });
+      flashScreen(app, color, 0.28);
+      playImpactSound({ crit: false });
     },
   }));
 

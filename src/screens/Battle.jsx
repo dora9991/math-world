@@ -126,10 +126,12 @@ export default function Battle({ nav, params }) {
   const partyMaxHp = computePartyMaxHp(partyMembers, (c) => levelFromExp(save.owned[c.id]?.exp || 0, c.rarity));
   const [partyHp, setPartyHp] = useState(partyMaxHp);
   const [phase, setPhase] = useState("choose"); // choose | question | resolving | result | defeat
-  // スキルは10目盛のゲージが満タン(10)になったら発動できる。攻撃を当てるたびに+1、
-  // 使うと0に戻る（8/11設計「累積正解でゲージが溜まる」のtoy実装）。
-  const [skillToggle, setSkillToggle] = useState({});
+  // スキルはSKILL_GAUGE_MAX問正解でゲージが満タンになったら発動できる。
+  // 【2026-09-18】次の通常攻撃に「予約」する方式をやめ、タップした瞬間に
+  // 確認ダイアログを出してその場で即時発動する方式にした（activateSkill参照）。
   const [gauge, setGauge] = useState({});
+  // 満タンのキャラをタップしたときに出す「スキルを発動しますか？」の確認ダイアログ。
+  const [skillConfirm, setSkillConfirm] = useState(null); // characterId | null
   // 各キャラが「どの敵を狙うか」。ドラッグで上書きするまでは自動割り振り。
   const [targets, setTargets] = useState({});
   const [problem, setProblem] = useState(null);
@@ -294,17 +296,13 @@ export default function Battle({ nav, params }) {
           setTargets((t) => ({ ...t, [d.charId]: droppedTargetId }));
         }
       } else {
-        // 動かさずタップ＝スキル情報の表示（満タンなら発動の予約トグルも兼ねる）。
+        // 動かさずタップ＝スキル情報の表示。満タンなら「発動しますか？」の
+        // 確認ダイアログを開く（2026-09-18：その場で即時発動する方式に変更）。
         const c = charactersById[d.charId];
         if (c?.skill) {
           const currentGauge = gauge[d.charId] || 0;
           if (currentGauge >= SKILL_GAUGE_MAX) {
-            const willArm = !skillToggle[d.charId];
-            setSkillToggle((s) => ({ ...s, [d.charId]: willArm }));
-            showTapInfo(
-              d.charId,
-              willArm ? `スキル：${c.skill.name}　次の攻撃で発動しますか？` : null
-            );
+            setSkillConfirm(d.charId);
           } else {
             showTapInfo(d.charId, `スキル発動まであと${SKILL_GAUGE_MAX - currentGauge}問`);
           }
@@ -316,42 +314,21 @@ export default function Battle({ nav, params }) {
     window.addEventListener("pointerup", onUp);
   }
 
-  // 支援スキル（回復/状態異常回復/攻撃力バフ/防御バフ）をまとめて集計する。
-  // 同じ種類を複数キャラが同時に使った場合：回復%は合算、cureは和集合、
-  // バフは一番強い倍率を採用（durationはそのスキルのdurationをそのまま使う）。
-  function summarizeSupportActions(supportActions) {
-    let healPercent = 0;
-    const cures = new Set();
-    let atkBuff = null;
-    let guardBuff = null;
-    for (const { skill } of supportActions) {
-      if (skill.category === "heal") healPercent += skill.percent;
-      else if (skill.category === "cure") for (const k of skill.cures) cures.add(k);
-      else if (skill.category === "buffAtk") {
-        if (!atkBuff || skill.multiplier > atkBuff.multiplier) {
-          atkBuff = { multiplier: skill.multiplier, turnsLeft: skill.duration };
-        }
-      } else if (skill.category === "buffGuard") {
-        if (!guardBuff || skill.multiplier < guardBuff.multiplier) {
-          guardBuff = { multiplier: skill.multiplier, turnsLeft: skill.duration };
-        }
-      }
-    }
-    return { healPercent, cures: [...cures], atkBuff, guardBuff };
-  }
-
   function tickBuff(buff) {
     if (!buff) return null;
     const turnsLeft = buff.turnsLeft - 1;
     return turnsLeft > 0 ? { ...buff, turnsLeft } : null;
   }
 
-  // 自分たちの攻撃が出そろった後の後始末：ダメージ・支援スキル・状態異常の経過を
-  // まとめて反映し、生き残った敵の頭上のカウントダウン(attackCountdown)を1減らす。
+  // 自分たちの攻撃が出そろった後の後始末：ダメージ・状態異常の経過をまとめて
+  // 反映し、生き残った敵の頭上のカウントダウン(attackCountdown)を1減らす。
   // 0になった敵だけがこの後「下がる→引っ掻く→揺れる」の反撃シーケンスで実際に
   // 攻撃する（2026-09-17：外したときも無条件に全員が反撃してくる仕様をやめ、
   // カウントダウン任せに統一した）。全滅させた場合は反撃なしで即結果へ。
-  function resolveAfterPartyAttack({ hits, supportActions, statusSnapshot }) {
+  // 【2026-09-18】スキル（ダメージ/バフ/回復/状態異常回復）はタップ即時発動
+  // （activateSkill参照）に一本化したので、ここではもう扱わない。バフの残り
+  // ターン数だけは、正解/不正解によらず「1ラウンド経過」として毎回減らす。
+  function resolveAfterPartyAttack({ hits, statusSnapshot }) {
     const damageByTarget = {};
     let selfDamage = 0; // 混乱で味方（パーティ自身）に向いた攻撃の合計
     for (const h of hits) {
@@ -385,23 +362,14 @@ export default function Battle({ nav, params }) {
       setTotals((t) => ({ exp: t.exp + gainedExp, coins: t.coins + gainedCoins }));
     }
 
-    // 支援スキルの適用。
-    const { healPercent, cures, atkBuff, guardBuff } = summarizeSupportActions(supportActions);
-    if (atkBuff || guardBuff) {
-      setPartyBuffs((prev) => ({
-        atk: atkBuff || tickBuff(prev.atk),
-        guard: guardBuff || tickBuff(prev.guard),
-      }));
-    }
+    setPartyBuffs((prev) => ({ atk: tickBuff(prev.atk), guard: tickBuff(prev.guard) }));
 
-    // 状態異常の経過処理（毒ダメージの算出＋継続ターンの消化）。cureがあれば続けて反映。
-    const { statusByCharId: tickedStatus, poisonDamage } = tickStatusEffects(statusSnapshot, partyMaxHp);
-    const nextStatus = cures.length ? cureStatusEffects(tickedStatus, cures) : tickedStatus;
+    // 状態異常の経過処理（毒ダメージの算出＋継続ターンの消化）。
+    const { statusByCharId: nextStatus, poisonDamage } = tickStatusEffects(statusSnapshot, partyMaxHp);
     setPartyStatus(nextStatus);
     partyStatusRef.current = nextStatus;
 
-    const healAmount = healPercent > 0 ? Math.round(partyMaxHp * healPercent) : 0;
-    const netHp = Math.max(0, Math.min(partyMaxHp, partyHp - selfDamage - poisonDamage + healAmount));
+    const netHp = Math.max(0, Math.min(partyMaxHp, partyHp - selfDamage - poisonDamage));
     setPartyHp(netHp);
 
     // 石化は全員そろうと即敗北（HPが残っていても誰も動けなくなるため）。
@@ -511,6 +479,114 @@ export default function Battle({ nav, params }) {
     runAttack(0, startHp);
   }
 
+  // キャラをタップして確認ダイアログで「使う」を選んだ瞬間、その場でスキルを
+  // 即時発動する（2026-09-18：次の通常攻撃への予約方式から変更。「戦闘に寂しさ
+  // がある」への対応で、押した瞬間にエフェクトが出るようにした）。
+  // 正解/不正解の判定とは無関係なボーナス行動という位置づけなので、敵の反撃
+  // カウントダウンは進めない（通常攻撃のラウンドとは別枠）。
+  function activateSkill(characterId) {
+    setSkillConfirm(null);
+    if (phase !== "choose") return;
+    const c = charactersById[characterId];
+    const skill = c?.skill;
+    if (!skill) return;
+    const effects = partyStatus[characterId];
+    if (!canActThisRound(effects) || !canUseSkillThisRound(effects)) return;
+    if ((gauge[characterId] || 0) < SKILL_GAUGE_MAX) return;
+
+    const level = levelFromExp(save.owned[c.id]?.exp || 0, c.rarity);
+    const charSubject = subjectFor(c);
+    const atkBuffMultiplier = partyBuffs.atk?.multiplier ?? 1;
+    const stageEl = stageRef.current;
+    const from = pointOf(portraitRefs.current[c.id], stageEl);
+    const partyRect = rectOf(partyAreaRef.current, stageEl);
+
+    setGauge((g) => ({ ...g, [characterId]: 0 }));
+    setPoppedOut((p) => ({ ...p, [characterId]: true }));
+    setTimeout(() => setPoppedOut((p) => ({ ...p, [characterId]: false })), POPUP_LEAD_MS + 260);
+
+    if (skill.category === "aoeDamage" || skill.category === "singleDamage") {
+      const targetIds =
+        skill.category === "aoeDamage"
+          ? aliveEnemies.map((en) => en.instanceId)
+          : [resolveTarget(c.id, 0)].filter(Boolean);
+      if (!targetIds.length) return;
+
+      const damageByTarget = {};
+      let anyCrit = false;
+      targetIds.forEach((tid, idx) => {
+        const rawAttack = resolvePlayerAttack(c, level, charSubject, true, {
+          skillMultiplier: skill.multiplier,
+          atkBuffMultiplier,
+        });
+        damageByTarget[tid] = (damageByTarget[tid] || 0) + rawAttack.damage;
+        if (rawAttack.isCrit) anyCrit = true;
+        const to = pointOf(enemyRefs.current[tid], stageEl);
+        setTimeout(() => {
+          fxRef.current?.playHit({
+            damage: rawAttack.damage,
+            isCrit: rawAttack.isCrit,
+            subject: charSubject,
+            from,
+            to,
+            offset: { dx: Math.random() * 12 - 6, dy: Math.random() * 14 - 7 },
+          });
+        }, idx * 90);
+      });
+
+      const applyDelay = targetIds.length * 90 + PROJECTILE_MS.normal;
+      setTimeout(() => {
+        let gainedExp = 0;
+        let gainedCoins = 0;
+        const hitIds = [];
+        const updatedEnemies = enemies.map((en) => {
+          const dmg = damageByTarget[en.instanceId] || 0;
+          if (dmg <= 0) return en;
+          hitIds.push(en.instanceId);
+          const newHp = Math.max(0, en.hp - dmg);
+          if (en.hp > 0 && newHp <= 0) {
+            gainedExp += isBossWave ? REWARD_EXP_BOSS : REWARD_EXP_GROUP;
+            gainedCoins += isBossWave ? REWARD_COIN_BOSS : REWARD_COIN_GROUP;
+            fxRef.current?.playDefeat({ to: pointOf(enemyRefs.current[en.instanceId], stageEl) });
+          }
+          return { ...en, hp: newHp };
+        });
+        setEnemies(updatedEnemies);
+        triggerEnemyShakeFor(hitIds, anyCrit ? 450 : 220);
+        if (gainedExp || gainedCoins) {
+          setTotals((t) => ({ exp: t.exp + gainedExp, coins: t.coins + gainedCoins }));
+        }
+        if (updatedEnemies.every((en) => en.hp <= 0)) {
+          setPhase("result");
+        }
+      }, applyDelay);
+      return;
+    }
+
+    if (skill.category === "buffAtk") {
+      setPartyBuffs((prev) => ({ ...prev, atk: { multiplier: skill.multiplier, turnsLeft: skill.duration } }));
+      fxRef.current?.playPartySkillFx({ rect: partyRect, text: `攻撃力 ×${skill.multiplier}`, color: 0xff8a4d });
+      return;
+    }
+    if (skill.category === "buffGuard") {
+      setPartyBuffs((prev) => ({ ...prev, guard: { multiplier: skill.multiplier, turnsLeft: skill.duration } }));
+      fxRef.current?.playPartySkillFx({ rect: partyRect, text: `被ダメ ×${skill.multiplier}`, color: 0x7fd0ff });
+      return;
+    }
+    if (skill.category === "heal") {
+      const healAmount = Math.round(partyMaxHp * skill.percent);
+      setPartyHp((hp) => Math.min(partyMaxHp, hp + healAmount));
+      fxRef.current?.playPartySkillFx({ rect: partyRect, text: `+${healAmount}`, color: 0x7cff8a });
+      return;
+    }
+    if (skill.category === "cure") {
+      const nextStatus = cureStatusEffects(partyStatusRef.current, skill.cures);
+      partyStatusRef.current = nextStatus;
+      setPartyStatus(nextStatus);
+      fxRef.current?.playPartySkillFx({ rect: partyRect, text: "状態異常回復", color: 0xbfe3ff });
+    }
+  }
+
   function pickChoice(index) {
     const correct = index === problem.correctIndex;
     setPhase("resolving");
@@ -536,21 +612,17 @@ export default function Battle({ nav, params }) {
         const fromPoint = pointOf(portraitRefs.current[partyMembers[0]?.id], stageEl);
         const toPoint = firstTarget ? pointOf(enemyRefs.current[firstTarget.instanceId], stageEl) : null;
         fxRef.current?.playMiss({ subject: subjectFor(partyMembers[0]), from: fromPoint, to: toPoint });
-        setTimeout(
-          () => resolveAfterPartyAttack({ hits: [], supportActions: [], statusSnapshot }),
-          PROJECTILE_MS.miss
-        );
+        setTimeout(() => resolveAfterPartyAttack({ hits: [], statusSnapshot }), PROJECTILE_MS.miss);
         return;
       }
 
       // 正解＝行動できるメンバー全員が同時にこうげき（麻痺/石化/スロー(今回不可)は
-      // 行動そのものをスキップ）。攻撃対象は「自分が指定した敵」（ドラッグ済みなら
-      // それ、未指定なら敵に均等に割り振り）。誰から見ても敵の実際の表示位置から
-      // たまを撃つ。全体ダメージスキル(aoeDamage)使用時は生存中の敵全員がtargetに
-      // なる（1キャラが複数ヒットを生む）。支援スキル(buffAtk/buffGuard/heal/cure)
-      // 使用時はダメージを出さず、party全体への効果として別枠(supportActions)で集計する。
+      // 行動そのものをスキップ、混乱は敵ではなく味方＝パーティ自身に向く）。
+      // 攻撃対象は「自分が指定した敵」（ドラッグ済みならそれ、未指定なら敵に均等に
+      // 割り振り）。誰から見ても敵の実際の表示位置からたまを撃つ。
+      // 【2026-09-18】スキルは通常攻撃の中では発動しない（タップ即時発動に統一。
+      // activateSkill参照）ので、ここは常にただの通常攻撃（攻撃力バフだけは乗る）。
       const hitEntries = [];
-      const supportActions = [];
       const actedCharacterIds = [];
       const atkBuffMultiplier = partyBuffs.atk?.multiplier ?? 1;
       const partySelfPoint = (() => {
@@ -565,15 +637,7 @@ export default function Battle({ nav, params }) {
 
         const level = levelFromExp(save.owned[c.id]?.exp || 0, c.rarity);
         const charSubject = subjectFor(c);
-        const skill = c.skill;
-        const sealed = !canUseSkillThisRound(effects);
-        const useSkillNow = !sealed && !!skillToggle[c.id] && (gauge[c.id] || 0) >= SKILL_GAUGE_MAX;
         const from = pointOf(portraitRefs.current[c.id], stageEl);
-
-        if (useSkillNow && skill && ["buffAtk", "buffGuard", "heal", "cure"].includes(skill.category)) {
-          supportActions.push({ character: c, skill });
-          return; // 支援スキルはダメージを出さない
-        }
 
         if (isConfusedThisRound(effects)) {
           const rawAttack = resolvePlayerAttack(c, level, charSubject, true, { atkBuffMultiplier });
@@ -585,7 +649,6 @@ export default function Battle({ nav, params }) {
             character: c,
             attack: { ...rawAttack, damage },
             subject: charSubject,
-            useSkill: false,
             targetId: "PARTY_SELF",
             isSelfHit: true,
             charIndex: i,
@@ -596,37 +659,13 @@ export default function Battle({ nav, params }) {
           return;
         }
 
-        if (useSkillNow && skill?.category === "aoeDamage") {
-          aliveEnemies.forEach((en, subIndex) => {
-            const rawAttack = resolvePlayerAttack(c, level, charSubject, true, {
-              skillMultiplier: skill.multiplier,
-              atkBuffMultiplier,
-            });
-            const damage = Math.max(1, Math.round(rawAttack.damage * DIFFICULTY_DAMAGE_MULTIPLIER[difficulty]));
-            hitEntries.push({
-              character: c,
-              attack: { ...rawAttack, damage },
-              subject: charSubject,
-              useSkill: true,
-              targetId: en.instanceId,
-              charIndex: i,
-              subIndex,
-              from,
-              to: pointOf(enemyRefs.current[en.instanceId], stageEl),
-            });
-          });
-          return;
-        }
-
-        const skillMultiplier = useSkillNow && skill?.category === "singleDamage" ? skill.multiplier : 1;
-        const rawAttack = resolvePlayerAttack(c, level, charSubject, true, { skillMultiplier, atkBuffMultiplier });
+        const rawAttack = resolvePlayerAttack(c, level, charSubject, true, { atkBuffMultiplier });
         const damage = Math.max(1, Math.round(rawAttack.damage * DIFFICULTY_DAMAGE_MULTIPLIER[difficulty]));
         const targetId = resolveTarget(c.id, i);
         hitEntries.push({
           character: c,
           attack: { ...rawAttack, damage },
           subject: charSubject,
-          useSkill: useSkillNow,
           targetId,
           charIndex: i,
           subIndex: 0,
@@ -637,7 +676,7 @@ export default function Battle({ nav, params }) {
 
       let maxLanding = 0;
       hitEntries.forEach((h) => {
-        const stagger = h.charIndex * STAGGER_MS + h.subIndex * 45 + Math.random() * STAGGER_JITTER_MS;
+        const stagger = h.charIndex * STAGGER_MS + Math.random() * STAGGER_JITTER_MS;
         const travel = h.attack.isCrit ? PROJECTILE_MS.crit : PROJECTILE_MS.normal;
         maxLanding = Math.max(maxLanding, stagger + POPUP_LEAD_MS + travel);
         const offset = {
@@ -646,11 +685,9 @@ export default function Battle({ nav, params }) {
         };
 
         // 枠から全体のイラストが飛び出す→少し間を置いてから、たまを撃つ。
-        if (h.subIndex === 0) {
-          setTimeout(() => {
-            setPoppedOut((s) => ({ ...s, [h.character.id]: true }));
-          }, stagger);
-        }
+        setTimeout(() => {
+          setPoppedOut((s) => ({ ...s, [h.character.id]: true }));
+        }, stagger);
 
         setTimeout(() => {
           fxRef.current?.playHit({
@@ -665,30 +702,17 @@ export default function Battle({ nav, params }) {
         }, stagger + POPUP_LEAD_MS);
       });
 
-      // 支援スキル勢も、控えめに一度だけ枠から飛び出す演出を出す（専用FXはまだ無い）。
-      supportActions.forEach((s, idx) => {
-        const stagger = s.character.id ? partyMembers.findIndex((c) => c.id === s.character.id) * STAGGER_MS : idx * STAGGER_MS;
-        maxLanding = Math.max(maxLanding, stagger + POPUP_LEAD_MS + 200);
-        setTimeout(() => setPoppedOut((p) => ({ ...p, [s.character.id]: true })), stagger);
-        setTimeout(() => setPoppedOut((p) => ({ ...p, [s.character.id]: false })), stagger + POPUP_LEAD_MS + 200);
-      });
-
-      // ゲージ更新：行動できたキャラは+1(上限10)、スキルを使ったキャラは0に戻る。
+      // ゲージ更新：行動できたキャラは+1（満タンで足止め、スキル使用時は
+      // activateSkill側で別途0に戻す）。
       setGauge((g) => {
         const next = { ...g };
         for (const id of actedCharacterIds) {
-          const usedSkill =
-            hitEntries.some((h) => h.character.id === id && h.useSkill) ||
-            supportActions.some((s) => s.character.id === id);
-          next[id] = usedSkill ? 0 : Math.min(SKILL_GAUGE_MAX, (g[id] || 0) + 1);
+          next[id] = Math.min(SKILL_GAUGE_MAX, (g[id] || 0) + 1);
         }
         return next;
       });
 
-      setTimeout(
-        () => resolveAfterPartyAttack({ hits: hitEntries, supportActions, statusSnapshot }),
-        maxLanding
-      );
+      setTimeout(() => resolveAfterPartyAttack({ hits: hitEntries, statusSnapshot }), maxLanding);
     }, ANSWER_SOUND_LEAD_MS);
   }
 
@@ -706,12 +730,10 @@ export default function Battle({ nav, params }) {
       setEnemies((encounters[nextIndex] || []).map((e) => ({ ...e })));
       setTargets({});
       setPhase("choose");
-      setSkillToggle({});
       setPoppedOut({});
       return;
     }
     setPhase("choose");
-    setSkillToggle({});
     setPoppedOut({});
   }
 
@@ -811,7 +833,6 @@ export default function Battle({ nav, params }) {
               const hasSkill = !!c.skill;
               const g = gauge[c.id] || 0;
               const ready = hasSkill && g >= SKILL_GAUGE_MAX;
-              const toggled = !!skillToggle[c.id];
               const popped = !!poppedOut[c.id];
               const statusEffects = partyStatus[c.id];
               return (
@@ -826,7 +847,7 @@ export default function Battle({ nav, params }) {
                 >
                   {/* 名前は表示せず絵柄を大きく（2026-09-18指示）。満タンだと枠が光り、
                       少しホワンホワンと拡縮する（MonsterPortraitのready→mw-portrait-ready）。 */}
-                  <MonsterPortrait character={c} size="small" selected={toggled} ready={ready} />
+                  <MonsterPortrait character={c} size="small" ready={ready} />
                   {statusEffects && (
                     <div className="mw-status-row mw-status-row-overlay">
                       {Object.entries(statusEffects).map(([key, state]) => (
@@ -880,6 +901,38 @@ export default function Battle({ nav, params }) {
           style={{ left: dragGhost.x, top: dragGhost.y }}
         >
           <MonsterPortrait character={charactersById[dragGhost.charId]} size="small" frameless />
+        </div>
+      )}
+
+      {/* 満タンのキャラをタップしたときの「使う/使わない」確認（2026-09-18追加）。 */}
+      {skillConfirm && charactersById[skillConfirm]?.skill && (
+        <div className="mw-modal-backdrop" onClick={() => setSkillConfirm(null)}>
+          <div className="mw-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <div style={{ width: 56 }}>
+                <MonsterPortrait character={charactersById[skillConfirm]} size="small" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 800 }}>
+                  {charactersById[skillConfirm].skill.icon} {charactersById[skillConfirm].skill.name}
+                </div>
+                {charactersById[skillConfirm].skill.desc && (
+                  <div style={{ opacity: 0.8, fontSize: "0.8rem" }}>
+                    {charactersById[skillConfirm].skill.desc}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div style={{ fontWeight: 700, textAlign: "center" }}>スキルを発動しますか？</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="mw-btn primary" style={{ flex: 1 }} onClick={() => activateSkill(skillConfirm)}>
+                使う
+              </button>
+              <button className="mw-fantasy-back" style={{ flex: 1 }} onClick={() => setSkillConfirm(null)}>
+                使わない
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
