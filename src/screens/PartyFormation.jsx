@@ -1,45 +1,117 @@
-import { useState } from "react";
+// ============================================================
+// PartyFormation.jsx — パーティ編成画面。
+// 2026-09-17：「変更」ボタンの一覧をやめ、ドラッグ＆ドロップでの入れ替えに変更。
+//   ・上段：パーティ5枠（絵＋名前、半分サイズ）
+//   ・下段：ガチャで手に入れた全キャラを絵柄だけで並べたグリッド（控え）
+//   ・控え→パーティ枠へドラッグ＝そのキャラを編成する
+//   ・パーティ枠→下の控えエリアへドラッグ＝パーティから外す
+//   ・動かさずタップ＝そのキャラの強さのポップアップを表示
+// ============================================================
+import { useRef, useState } from "react";
 import { useGame, PARTY_SIZE } from "../context/GameContext.jsx";
-import { SUBJECT_LABEL } from "../data/storyMap.js";
-import { expProgress } from "../engine/expCurve.js";
 import MonsterPortrait from "../components/MonsterPortrait.jsx";
+import CharacterPopup from "../components/CharacterPopup.jsx";
 
 const PARTY_SLOTS = Array.from({ length: PARTY_SIZE }, (_, i) => i);
-
-const SUBJECT_COLOR = {
-  calc: "var(--calc)",
-  eq: "var(--eq)",
-  func: "var(--func)",
-  geo: "var(--geo)",
-  data: "var(--data)",
-};
-
-function StatBars({ character }) {
-  return (
-    <div style={{ marginTop: 8 }}>
-      {Object.entries(character.subjects).map(([key, value]) => (
-        <div className="mw-bar-row" key={key}>
-          <div className="mw-bar-label">{SUBJECT_LABEL[key]}</div>
-          <div className="mw-bar-track">
-            <div
-              className="mw-bar-fill"
-              style={{ width: `${Math.min(100, value)}%`, background: SUBJECT_COLOR[key] }}
-            />
-          </div>
-          <div style={{ width: "2.4em", textAlign: "right" }}>{value}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
+const DRAG_THRESHOLD_PX = 10;
 
 export default function PartyFormation({ nav }) {
   const { save, actions, charactersById } = useGame();
-  const [pickingSlot, setPickingSlot] = useState(null);
+  const [popupCharId, setPopupCharId] = useState(null);
+  const [dragGhost, setDragGhost] = useState(null); // {charId, x, y} | null
+  const [hoverSlot, setHoverSlot] = useState(null); // 控え→パーティへドラッグ中、指の下にある枠
+  const [benchHover, setBenchHover] = useState(false); // パーティ→控えへドラッグ中、控えエリアの上にいるか
+
+  // pointermove/pointerupはドラッグ中ずっと同じリスナーを使い回すので、
+  // 判定にReactのstateをそのまま読むと古い値を掴んでしまう（Battle.jsxの
+  // ドラッグ実装と同じ理由）。判定用にはrefを、見た目の更新にはstateを使う。
+  const dragRef = useRef(null); // {origin:'bench'|'party', charId, slotIndex, startX, startY, moved}
+  const hoverSlotRef = useRef(null);
+  const benchHoverRef = useRef(false);
+  const slotRefs = useRef({}); // slot index -> el
+  const benchAreaRef = useRef(null);
 
   const ownedList = Object.keys(save.owned)
     .map((id) => charactersById[id])
     .filter(Boolean);
+
+  function startDrag(e, origin, charId, slotIndex) {
+    e.preventDefault();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* 対応していない環境では無視 */
+    }
+    const startX = e.clientX;
+    const startY = e.clientY;
+    dragRef.current = { origin, charId, slotIndex, startX, startY, moved: false };
+    setDragGhost({ charId, x: startX, y: startY });
+
+    function onMove(ev) {
+      const d = dragRef.current;
+      if (!d) return;
+      const dx = ev.clientX - d.startX;
+      const dy = ev.clientY - d.startY;
+      if (Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) d.moved = true;
+      setDragGhost({ charId: d.charId, x: ev.clientX, y: ev.clientY });
+      if (!d.moved) return;
+
+      if (d.origin === "bench") {
+        let hovered = null;
+        for (const slot of PARTY_SLOTS) {
+          const el = slotRefs.current[slot];
+          if (!el) continue;
+          const r = el.getBoundingClientRect();
+          if (ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) {
+            hovered = slot;
+            break;
+          }
+        }
+        hoverSlotRef.current = hovered;
+        setHoverSlot(hovered);
+      } else {
+        const el = benchAreaRef.current;
+        let inside = false;
+        if (el) {
+          const r = el.getBoundingClientRect();
+          inside =
+            ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+        }
+        benchHoverRef.current = inside;
+        setBenchHover(inside);
+      }
+    }
+
+    function onUp() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      const d = dragRef.current;
+      dragRef.current = null;
+      const dropSlot = hoverSlotRef.current;
+      const dropOnBench = benchHoverRef.current;
+      hoverSlotRef.current = null;
+      benchHoverRef.current = false;
+      setDragGhost(null);
+      setHoverSlot(null);
+      setBenchHover(false);
+
+      if (!d) return;
+      if (!d.moved) {
+        setPopupCharId(d.charId); // 動かさずに離した＝タップ＝ポップアップ表示
+        return;
+      }
+      if (d.origin === "bench" && dropSlot !== null) {
+        actions.setPartySlot(dropSlot, d.charId);
+      } else if (d.origin === "party" && dropOnBench) {
+        actions.setPartySlot(d.slotIndex, null);
+      }
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  const popupChar = popupCharId ? charactersById[popupCharId] : null;
 
   return (
     <div className="mw-fantasy-screen">
@@ -54,70 +126,43 @@ export default function PartyFormation({ nav }) {
       </div>
 
       <div className="mw-fantasy-panel">
-        <div className="mw-party-row" style={{ marginBottom: 12 }}>
+        <div className="mw-party-row mw-party-row-small">
           {PARTY_SLOTS.map((slot) => {
             const c = save.party[slot] ? charactersById[save.party[slot]] : null;
             return (
-              <button key={slot} className="mw-portrait-btn" onClick={() => setPickingSlot(slot)}>
+              <button
+                key={slot}
+                className={`mw-portrait-btn ${hoverSlot === slot ? "mw-slot-drop-hover" : ""}`}
+                ref={(el) => {
+                  slotRefs.current[slot] = el;
+                }}
+                onPointerDown={(e) => c && startDrag(e, "party", c.id, slot)}
+              >
                 <MonsterPortrait character={c} size="small" footer={c ? c.name : "（空き枠）"} />
               </button>
             );
           })}
         </div>
-        {PARTY_SLOTS.map((slot) => {
-          const c = save.party[slot] ? charactersById[save.party[slot]] : null;
-          return (
-            <div key={slot} className="mw-fantasy-item" style={{ cursor: "default" }}>
-              <div style={{ flex: 1 }}>
-                {c ? (
-                  <>
-                    <span className={`mw-rarity mw-rarity-${c.rarity}`}>{c.rarity}</span>{" "}
-                    <strong>{c.name}</strong>
-                    <div style={{ opacity: 0.75, fontWeight: 600 }}>
-                      Lv{expProgress(save.owned[c.id]?.exp || 0, c.rarity).level}
-                    </div>
-                  </>
-                ) : (
-                  <span style={{ opacity: 0.75 }}>（空き枠）</span>
-                )}
-              </div>
-              <button className="mw-fantasy-back" onClick={() => setPickingSlot(slot)}>
-                変更
-              </button>
-            </div>
-          );
-        })}
       </div>
 
-      {pickingSlot !== null && (
-        <div className="mw-fantasy-panel">
+      <div className={`mw-fantasy-panel ${benchHover ? "mw-bench-drop-hover" : ""}`} ref={benchAreaRef}>
+        <div className="mw-bench-title">控えメンバー（タップで詳細／ドラッグで上のパーティ枠へ）</div>
+        <div className="mw-bench-grid">
           {ownedList.map((c) => (
-            <button
-              key={c.id}
-              className="mw-fantasy-item"
-              style={{ flexDirection: "column", alignItems: "stretch" }}
-              onClick={() => {
-                actions.setPartySlot(pickingSlot, c.id);
-                setPickingSlot(null);
-              }}
-            >
-              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <div style={{ width: 44 }}>
-                  <MonsterPortrait character={c} size="small" />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <span className={`mw-rarity mw-rarity-${c.rarity}`}>{c.rarity}</span> {c.name}
-                  <div style={{ opacity: 0.75, fontWeight: 600 }}>{c.theme}</div>
-                </div>
-              </div>
-              <StatBars character={c} />
+            <button key={c.id} className="mw-portrait-btn mw-bench-item" onPointerDown={(e) => startDrag(e, "bench", c.id, null)}>
+              <MonsterPortrait character={c} size="small" />
             </button>
           ))}
-          <button className="mw-fantasy-back" onClick={() => setPickingSlot(null)}>
-            キャンセル
-          </button>
+        </div>
+      </div>
+
+      {dragGhost && (
+        <div className="mw-drag-ghost" style={{ left: dragGhost.x, top: dragGhost.y }}>
+          <MonsterPortrait character={charactersById[dragGhost.charId]} size="small" frameless />
         </div>
       )}
+
+      {popupChar && <CharacterPopup character={popupChar} save={save} onClose={() => setPopupCharId(null)} />}
     </div>
   );
 }

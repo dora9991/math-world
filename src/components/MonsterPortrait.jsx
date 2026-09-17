@@ -29,22 +29,26 @@ export default function MonsterPortrait({
   }
 
   const frame = (
-    <div
-      className={`mw-portrait-frame ${rarity ? `mw-portrait-${rarity}` : ""} ${
-        selected ? "mw-portrait-selected" : ""
-      } ${ready ? "mw-portrait-ready" : ""}`}
-    >
-      {url ? (
-        <img
-          src={url}
-          alt={character.name}
-          className="mw-portrait-img"
-          style={{ filter }}
-          draggable={false}
-        />
-      ) : (
-        <div className="mw-portrait-fallback">{character ? "❓" : ""}</div>
-      )}
+    <div className="mw-portrait-wrap">
+      <div
+        className={`mw-portrait-frame ${rarity ? `mw-portrait-${rarity}` : ""} ${
+          selected ? "mw-portrait-selected" : ""
+        } ${ready ? "mw-portrait-ready" : ""}`}
+      >
+        {url ? (
+          <img
+            src={url}
+            alt={character.name}
+            className="mw-portrait-img"
+            style={{ filter }}
+            draggable={false}
+          />
+        ) : (
+          <div className="mw-portrait-fallback">{character ? "❓" : ""}</div>
+        )}
+      </div>
+      {/* 右下のレア度バッジ（2026-09-18追加）。R/SR/URはキラキラ演出つき。 */}
+      {rarity && <div className={`mw-rarity-badge mw-rarity-badge-${rarity}`}>{rarity}</div>}
     </div>
   );
 

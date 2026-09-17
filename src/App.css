@@ -328,6 +328,12 @@ body {
 .mw-rarity-UR { background: #ff9ecb; }
 
 /* ---- モンスター/キャラ画像の四角枠 ---- */
+/* 枠(overflow:hidden)の外側でバッジ(mw-rarity-badge)を角にはみ出させて置くための包み。 */
+.mw-portrait-wrap {
+  position: relative;
+  width: 100%;
+}
+
 .mw-portrait-frame {
   aspect-ratio: 1;
   border-radius: 12px;
@@ -357,6 +363,69 @@ body {
 .mw-portrait-R { border-color: #7fd0ff; }
 .mw-portrait-SR { border-color: #ffd166; }
 .mw-portrait-UR { border-color: #ff9ecb; }
+
+/* アイコン右下のレア度バッジ（2026-09-18追加）。R以上はキラキラ演出をつけて
+   一目でレア度が分かるようにする（N→静止、R→ほんのり発光、SR→強めの発光、
+   UR→虹色に色が回りながら発光、と段階的に派手にした）。 */
+.mw-rarity-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1;
+  color: #24230a;
+  border: 1.5px solid rgba(255, 255, 255, 0.92);
+  z-index: 3;
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+.mw-rarity-badge-N {
+  background: #b9bdd8;
+}
+
+.mw-rarity-badge-R {
+  background: #7fd0ff;
+  animation: mw-badge-glow-r 1.7s ease-in-out infinite;
+}
+
+.mw-rarity-badge-SR {
+  background: #ffd166;
+  animation: mw-badge-glow-sr 1.3s ease-in-out infinite;
+}
+
+.mw-rarity-badge-UR {
+  background: linear-gradient(135deg, #ff9ecb, #ffd166, #7fd0ff, #ff9ecb);
+  background-size: 300% 300%;
+  animation: mw-badge-glow-ur 1.6s ease-in-out infinite, mw-badge-ur-hue 2.6s linear infinite;
+}
+
+@keyframes mw-badge-glow-r {
+  0%, 100% { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55), 0 0 2px 0px rgba(127, 208, 255, 0.7); }
+  50% { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55), 0 0 7px 3px rgba(127, 208, 255, 1); }
+}
+
+@keyframes mw-badge-glow-sr {
+  0%, 100% { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55), 0 0 3px 0px rgba(255, 209, 102, 0.8); }
+  50% { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55), 0 0 10px 4px rgba(255, 224, 102, 1); }
+}
+
+@keyframes mw-badge-glow-ur {
+  0%, 100% { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55), 0 0 4px 1px rgba(255, 158, 203, 0.9); }
+  50% { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55), 0 0 12px 5px rgba(255, 224, 102, 1); }
+}
+
+@keyframes mw-badge-ur-hue {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
 
 .mw-portrait-selected {
   border-color: #ffffff;
@@ -394,6 +463,50 @@ body {
 
 .mw-skill-icon.mw-skill-ready {
   opacity: 1;
+}
+
+/* 状態異常アイコン（2026-09-18追加）。パーティの各ポートレート下に並ぶ。 */
+.mw-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.mw-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 0.62rem;
+  line-height: 1;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 6px;
+  padding: 1px 3px;
+}
+
+/* パーティ全体バフ（攻撃力/被ダメ軽減）の表示。HPバーの下に並ぶ。 */
+.mw-buff-row {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.mw-buff-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--panel-2);
+}
+
+.mw-buff-atk {
+  color: #ff8a4d;
+}
+
+.mw-buff-guard {
+  color: #7fd0ff;
 }
 
 .mw-portrait-col {
@@ -466,6 +579,28 @@ body {
 .mw-enemy-slot.mw-enemy-drop-hover {
   background: rgba(255, 207, 77, 0.2);
   box-shadow: 0 0 0 3px var(--accent);
+}
+
+/* 敵の頭上の「あと何ラウンドで反撃してくるか」の数字（2026-09-17追加）。
+   0になった敵だけがその反撃フェーズで実際に攻撃してくる。 */
+.mw-enemy-countdown {
+  position: absolute;
+  top: -2px;
+  right: 14%;
+  z-index: 2;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #c94848;
+  border: 2px solid #ffe9b3;
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
 
 .mw-portrait-bare-img {
@@ -1211,5 +1346,106 @@ body {
   padding: 8px 10px;
   color: var(--text);
   font-size: 1rem;
+  font-weight: 700;
+}
+
+/* ============================================================
+   PartyFormation.jsx（2026-09-17）：ドラッグ＆ドロップ編成 + 強さポップアップ
+   ============================================================ */
+
+/* 控え→パーティ枠へドラッグ中、指の下にある枠を光らせる（ドロップ先の合図） */
+.mw-slot-drop-hover .mw-portrait-frame {
+  border-color: #ffe066;
+  box-shadow: 0 0 0 3px rgba(255, 224, 102, 0.85);
+}
+
+/* パーティ枠→控えへドラッグ中、控えエリア全体を光らせる（外す合図） */
+.mw-bench-drop-hover {
+  box-shadow: inset 0 0 0 3px #ffe066, 0 10px 26px rgba(0, 0, 0, 0.55), 0 0 24px rgba(255, 205, 110, 0.18) !important;
+}
+
+.mw-bench-title {
+  font-size: 0.78rem;
+  color: #f3e3c4;
+  opacity: 0.85;
+}
+
+.mw-bench-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 8px;
+}
+
+.mw-bench-item {
+  width: 100%;
+}
+
+/* キャラ詳細ポップアップ */
+.mw-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 8, 20, 0.72);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.mw-modal-card {
+  width: 100%;
+  max-width: 360px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: linear-gradient(180deg, #4a3420 0%, #33240f 100%);
+  border: 4px solid #caa14d;
+  border-radius: 22px;
+  box-shadow: inset 0 0 0 2px #8a6a3a, 0 10px 26px rgba(0, 0, 0, 0.55);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: #f3e3c4;
+}
+
+.mw-modal-stat-row {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 800;
+  font-size: 1rem;
+}
+
+/* 5角形レーダーチャート（計算/方程式/関数/図形/データ） */
+.mw-pentagon {
+  width: 100%;
+  max-width: 260px;
+  margin: 0 auto;
+  display: block;
+}
+
+.mw-pentagon-ring {
+  fill: none;
+  stroke: rgba(243, 227, 196, 0.25);
+  stroke-width: 1;
+}
+
+.mw-pentagon-axis {
+  stroke: rgba(243, 227, 196, 0.25);
+  stroke-width: 1;
+}
+
+.mw-pentagon-data {
+  fill: rgba(255, 207, 77, 0.35);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.mw-pentagon-dot {
+  fill: var(--accent);
+}
+
+.mw-pentagon-label {
+  fill: #f3e3c4;
+  font-size: 9px;
   font-weight: 700;
 }
