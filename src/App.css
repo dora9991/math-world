@@ -369,8 +369,9 @@ body {
    UR→虹色に色が回りながら発光、と段階的に派手にした）。 */
 .mw-rarity-badge {
   position: absolute;
-  right: -3px;
-  bottom: -3px;
+  /* 枠の外にはみ出させず、枠内の右下に重ねて表示する（2026-09-18指示）。 */
+  right: 4%;
+  bottom: 4%;
   width: 18px;
   height: 18px;
   border-radius: 50%;
@@ -432,40 +433,25 @@ body {
   box-shadow: 0 0 0 2px #ffffff;
 }
 
-/* スキルゲージが満タン(10/10)になった合図。枠が黄色に光る。 */
+/* スキルゲージが満タンになった合図。枠が黄色に光り、キャラがホワンホワンと
+   少し拡縮する（2026-09-18：光るだけ→呼吸するアニメーションを追加）。 */
 .mw-portrait-ready {
   border-color: #ffe066;
   box-shadow: 0 0 10px 3px rgba(255, 224, 102, 0.85);
+  animation: mw-portrait-breathe 1.6s ease-in-out infinite;
 }
 
-.mw-gauge-row {
-  display: flex;
-  gap: 1.5px;
-  width: 100%;
-  margin-top: 3px;
+@keyframes mw-portrait-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
 }
 
-.mw-gauge-tick {
-  flex: 1;
-  height: 4px;
-  border-radius: 1px;
-  background: #3a3f6b;
-}
-
-.mw-gauge-tick.filled {
-  background: #ffe066;
-}
-
-.mw-skill-icon {
-  font-size: 0.85rem;
-  opacity: 0.4;
-}
-
-.mw-skill-icon.mw-skill-ready {
-  opacity: 1;
-}
-
-/* 状態異常アイコン（2026-09-18追加）。パーティの各ポートレート下に並ぶ。 */
+/* 状態異常アイコン（2026-09-18追加）。 */
 .mw-status-row {
   display: flex;
   flex-wrap: wrap;
@@ -483,6 +469,38 @@ body {
   background: rgba(0, 0, 0, 0.35);
   border-radius: 6px;
   padding: 1px 3px;
+}
+
+/* バトル画面：名前欄を無くした分、状態異常は枠の左上に重ねて表示する
+   （2026-09-18）。 */
+.mw-status-row-overlay {
+  position: absolute;
+  top: 3%;
+  left: 3%;
+  z-index: 4;
+  margin-top: 0;
+  max-width: 70%;
+  pointer-events: none;
+}
+
+/* キャラをタップした直後だけ出す説明（あと何問／スキル発動確認）。
+   パーティ列の上に浮かせて、特定の1体だけでなく毎回同じ場所に出す
+   （2026-09-18追加）。 */
+.mw-tap-info-banner {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  max-width: 92%;
+  background: rgba(20, 23, 43, 0.95);
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+  z-index: 50;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
 /* パーティ全体バフ（攻撃力/被ダメ軽減）の表示。HPバーの下に並ぶ。 */

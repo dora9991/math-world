@@ -165,6 +165,18 @@ export default function Battle({ nav, params }) {
   const [hoverTargetId, setHoverTargetId] = useState(null);
   const dragRef = useRef(null); // {charId, startX, startY, moved}
   const hoverRef = useRef(null);
+  // キャラをタップしたときに一時的に出す説明（スキル発動まであと何問／発動確認）。
+  const [tapInfo, setTapInfo] = useState(null); // {charId, text} | null
+  const tapInfoTimeoutRef = useRef(null);
+  function showTapInfo(charId, text) {
+    if (tapInfoTimeoutRef.current) clearTimeout(tapInfoTimeoutRef.current);
+    if (!text) {
+      setTapInfo(null);
+      return;
+    }
+    setTapInfo({ charId, text });
+    tapInfoTimeoutRef.current = setTimeout(() => setTapInfo(null), 2600);
+  }
 
   // 舞台（敵表示＋パーティ表示をまとめた1枚）と、各要素の位置を測るためのref。
   const stageRef = useRef(null);
@@ -267,21 +279,37 @@ export default function Battle({ nav, params }) {
       window.removeEventListener("pointerup", onUp);
       const d = dragRef.current;
       dragRef.current = null;
+      // ホバー中の敵IDは先にローカル変数へ確定させてからsetTargetsに渡す。
+      // setTargetsの更新関数の中でhoverRef.currentを直接読むと、直後の
+      // 「hoverRef.current = null」とレースしてnullを拾ってしまうことがあった
+      // （ドラッグしても攻撃対象が切り替わらないバグの原因）。
+      const droppedTargetId = hoverRef.current;
+      hoverRef.current = null;
       setDragGhost(null);
       setHoverTargetId(null);
 
       if (!d) return;
       if (d.moved) {
-        if (hoverRef.current) {
-          setTargets((t) => ({ ...t, [d.charId]: hoverRef.current }));
+        if (droppedTargetId) {
+          setTargets((t) => ({ ...t, [d.charId]: droppedTargetId }));
         }
       } else {
+        // 動かさずタップ＝スキル情報の表示（満タンなら発動の予約トグルも兼ねる）。
         const c = charactersById[d.charId];
-        if (c?.skill && (gauge[d.charId] || 0) >= SKILL_GAUGE_MAX) {
-          setSkillToggle((s) => ({ ...s, [d.charId]: !s[d.charId] }));
+        if (c?.skill) {
+          const currentGauge = gauge[d.charId] || 0;
+          if (currentGauge >= SKILL_GAUGE_MAX) {
+            const willArm = !skillToggle[d.charId];
+            setSkillToggle((s) => ({ ...s, [d.charId]: willArm }));
+            showTapInfo(
+              d.charId,
+              willArm ? `スキル：${c.skill.name}　次の攻撃で発動しますか？` : null
+            );
+          } else {
+            showTapInfo(d.charId, `スキル発動まであと${SKILL_GAUGE_MAX - currentGauge}問`);
+          }
         }
       }
-      hoverRef.current = null;
     }
 
     window.addEventListener("pointermove", onMove);
@@ -765,11 +793,9 @@ export default function Battle({ nav, params }) {
                   )}
                   <MonsterPortrait character={en} size="full" frameless />
                   <div className="mw-enemy-name">{en.name}</div>
+                  {/* 相手の正確なHPはあえて隠す（2026-09-18指示）。バーだけ残す。 */}
                   <div className="mw-hpbar" style={{ width: "90%" }}>
                     <div style={{ width: `${Math.max(0, (en.hp / en.maxHp) * 100)}%` }} />
-                  </div>
-                  <div className="mw-sub">
-                    {en.hp} / {en.maxHp}
                   </div>
                 </div>
               );
@@ -778,15 +804,16 @@ export default function Battle({ nav, params }) {
         </div>
 
         <div className={`mw-party-area ${partyShake ? "mw-shake" : ""}`} ref={partyAreaRef}>
-          <div className="mw-party-row mw-party-row-small" style={{ marginBottom: 10 }}>
-            {partyMembers.map((c, i) => {
+          {/* タップ直後だけ出す説明（あと何問／スキル発動確認）。2026-09-18追加。 */}
+          {tapInfo && <div className="mw-tap-info-banner">{tapInfo.text}</div>}
+          <div className="mw-party-row" style={{ marginBottom: 10 }}>
+            {partyMembers.map((c) => {
               const hasSkill = !!c.skill;
               const g = gauge[c.id] || 0;
               const ready = hasSkill && g >= SKILL_GAUGE_MAX;
               const toggled = !!skillToggle[c.id];
               const popped = !!poppedOut[c.id];
-              const targetId = resolveTarget(c.id, i);
-              const targetIndex = aliveEnemies.findIndex((e) => e.instanceId === targetId);
+              const statusEffects = partyStatus[c.id];
               return (
                 <button
                   key={c.id}
@@ -797,38 +824,19 @@ export default function Battle({ nav, params }) {
                   disabled={phase !== "choose"}
                   onPointerDown={(e) => handlePortraitPointerDown(e, c.id)}
                 >
-                  <MonsterPortrait
-                    character={c}
-                    size="small"
-                    selected={toggled}
-                    ready={ready}
-                    footer={
-                      <>
-                        {c.name}
-                        {enemies.length > 1 && targetIndex >= 0 ? `→敵${targetIndex + 1}` : ""}
-                        <div className="mw-gauge-row">
-                          {Array.from({ length: SKILL_GAUGE_MAX }, (_, t) => (
-                            <div key={t} className={`mw-gauge-tick ${t < g ? "filled" : ""}`} />
-                          ))}
-                        </div>
-                        {hasSkill && (
-                          <span className={`mw-skill-icon ${ready ? "mw-skill-ready" : ""}`}>
-                            {c.skill.icon}
-                          </span>
-                        )}
-                        {partyStatus[c.id] && (
-                          <div className="mw-status-row">
-                            {Object.entries(partyStatus[c.id]).map(([key, state]) => (
-                              <span key={key} className="mw-status-chip" title={key}>
-                                {STATUS_ICON[key]}
-                                {state.turnsLeft ?? ""}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </>
-                    }
-                  />
+                  {/* 名前は表示せず絵柄を大きく（2026-09-18指示）。満タンだと枠が光り、
+                      少しホワンホワンと拡縮する（MonsterPortraitのready→mw-portrait-ready）。 */}
+                  <MonsterPortrait character={c} size="small" selected={toggled} ready={ready} />
+                  {statusEffects && (
+                    <div className="mw-status-row mw-status-row-overlay">
+                      {Object.entries(statusEffects).map(([key, state]) => (
+                        <span key={key} className="mw-status-chip" title={key}>
+                          {STATUS_ICON[key]}
+                          {state.turnsLeft ?? ""}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {/* 攻撃の瞬間、枠から全体のイラストが縦横2倍の大きさで飛び出す */}
                   {monsterImageUrl(c, "full") && (
                     <div className={`mw-portrait-popup ${popped ? "mw-popup-show" : ""}`}>
